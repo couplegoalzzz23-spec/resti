@@ -19,57 +19,45 @@ st.set_page_config(
 )
 
 # ==========================================================
-# CONSTANT
-# ==========================================================
-STATION_NAME = "Pangkalan Udara Roesmin Nurjadin"
-ELEVATION_M = 31
-ICAO_CODE = "WIBB"
-
-# ==========================================================
 # DATA LOADER
 # ==========================================================
 @st.cache_data
 def load_data():
     """
-    Membaca seluruh file excel yang ada di direktori dan 
-    menggabungkannya menjadi satu DataFrame utama.
+    Membaca seluruh file excel yang ada di direktori.
+    Memastikan openpyxl terinstall untuk membaca .xlsx
     """
     file_names = [
         "rekap_temperature_2021_2025.xlsx",
         "rekap_rh_max_min_2021_2025.xlsx",
         "rekap_visibility_2021_2025.xlsx",
         "rekap_wind_2021_2025.xlsx"
-        # Tambahkan file lain jika diperlukan
     ]
     
     dfs = []
+    found_files = False
+    
     for file in file_names:
         if os.path.exists(file):
-            df_temp = pd.read_excel(file)
-            dfs.append(df_temp)
+            try:
+                # Membaca excel dengan engine openpyxl
+                df_temp = pd.read_excel(file, engine='openpyxl')
+                dfs.append(df_temp)
+                found_files = True
+            except Exception as e:
+                st.error(f"Gagal membaca {file}: {e}")
     
-    if not dfs:
-        st.error("File data tidak ditemukan! Pastikan file .xlsx ada di folder yang sama dengan app.py.")
+    if not found_files:
+        st.error("Data tidak ditemukan! Pastikan file .xlsx berada di folder yang sama dengan app.py.")
         st.stop()
         
-    # Menggabungkan data berdasarkan kolom 'Datetime'
+    # Menggabungkan data (outer join agar data tidak hilang)
     from functools import reduce
     df_final = reduce(lambda left, right: pd.merge(left, right, on='Datetime', how='outer'), dfs)
     
-    # Pastikan Datetime dalam format datetime
+    # Konversi Datetime
     df_final['Datetime'] = pd.to_datetime(df_final['Datetime'])
     return df_final
-
-# ==========================================================
-# VALIDATION
-# ==========================================================
-def validate_data(df):
-    required_columns = ["Datetime", "Temperature", "RH", "Visibility", "WindSpeed", "WindDir"]
-    missing_cols = [col for col in required_columns if col not in df.columns]
-    
-    if missing_cols:
-        st.warning(f"Kolom tidak lengkap: {', '.join(missing_cols)}. Aplikasi mungkin tidak berjalan optimal.")
-    return True
 
 # ==========================================================
 # PREPROCESSING
@@ -79,54 +67,29 @@ def preprocess_data(df):
     df["Year"] = df["Datetime"].dt.year
     return df
 
-def get_diurnal_stats(df, parameter):
-    return df.groupby("Hour")[parameter].mean().reset_index()
-
 # ==========================================================
-# INTERPRETATION ENGINE & AVIATION NOTES (Sama seperti sebelumnya)
-# ==========================================================
-def interpret_diurnal_pattern(df_diurnal, parameter, unit):
-    max_val = df_diurnal[parameter].max()
-    max_hour = df_diurnal.loc[df_diurnal[parameter].idxmax(), "Hour"]
-    return f"Puncak {parameter} rata-rata terjadi pada pukul {max_hour:02d}:00 dengan nilai {max_val:.1f}{unit}."
-
-def generate_aviation_notes(parameter):
-    notes = {
-        "Temperature": "Suhu tinggi memengaruhi density altitude dan performa pesawat.",
-        "RH": "RH tinggi pada pagi hari berpotensi menciptakan kabut (fog).",
-        "Visibility": "Visibilitas rendah membatasi operasi VFR.",
-        "Wind": "Perhatikan arah angin untuk pemilihan runway."
-    }
-    return notes.get(parameter, "Tidak ada catatan khusus.")
-
-# ==========================================================
-# PLOT FUNCTIONS (Sama seperti sebelumnya)
-# ==========================================================
-def plot_meteogram(df_diurnal, x_col, y_col, title, y_label, color):
-    fig = px.line(df_diurnal, x=x_col, y=y_col, title=title, markers=True)
-    fig.update_layout(xaxis=dict(tickmode='linear'), template="plotly_white")
-    return fig
-
-# ==========================================================
-# PAGE MAIN
+# MAIN PAGE
 # ==========================================================
 def main():
     st.title("🎛️ Dashboard Analisis Cuaca Bandara")
     
-    df_raw = load_data()
-    validate_data(df_raw)
-    df = preprocess_data(df_raw)
+    # 1. Load & Process
+    df = load_data()
+    df = preprocess_data(df)
     
-    menu = ["Home", "Temperature", "Wind", "Visibility"]
-    choice = st.sidebar.selectbox("Pilih Modul", menu)
+    # Sidebar
+    menu = ["Home", "Overview"]
+    choice = st.sidebar.selectbox("Navigasi", menu)
     
     if choice == "Home":
-        st.write("Data berhasil dimuat dari file Excel Anda.")
-        st.dataframe(df.head())
-    elif choice == "Temperature":
-        df_diurnal = get_diurnal_stats(df, "Temperature")
-        st.plotly_chart(plot_meteogram(df_diurnal, "Hour", "Temperature", "Suhu", "°C", "red"))
-        st.write(interpret_diurnal_pattern(df_diurnal, "Temperature", "°C"))
+        st.subheader("Data Overview")
+        st.dataframe(df.head(20))
+        st.success("Data berhasil dimuat dan diproses dari file Excel!")
+        
+    elif choice == "Overview":
+        st.subheader("Ringkasan Data")
+        st.write(f"Total baris data: {len(df)}")
+        st.line_chart(df.set_index("Datetime")["Temperature"])
 
 if __name__ == "__main__":
     main()
