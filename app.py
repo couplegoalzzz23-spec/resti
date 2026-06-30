@@ -2,6 +2,7 @@ import streamlit as st
 import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
+from plotly.subplots import make_subplots
 import os
 
 # ==========================================
@@ -79,7 +80,7 @@ def load_data(filename):
         df['TEMP_DATE'] = df['DATE'].astype(str).str.upper().str.strip().str[:3]
         df = df[df['TEMP_DATE'].isin(valid_months_map.keys())].copy()
         
-        # FIX: Mencegah crash Length of values mismatch (Membuang duplikasi jika file Excel terbaca ganda / ada baris sisa)
+        # Mencegah error duplikasi / blank rows
         df = df.drop_duplicates(subset=['TEMP_DATE'], keep='first')
         
         df['DATE'] = df['TEMP_DATE'].map(valid_months_map)
@@ -89,12 +90,12 @@ def load_data(filename):
         df['DATE_CAT'] = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
         df = df.sort_values('DATE_CAT').drop(columns=['DATE_CAT']).reset_index(drop=True)
         
-        # Casting ke numeric secara aman (kecuali DATE dan DIRECTION)
+        # Casting ke numeric secara aman (kecuali DATE dan indikator string Arah Angin)
         for col in df.columns:
             if col == 'DATE':
                 continue
-            elif col.upper() == 'DIRECTION':
-                df[col] = df[col].astype(str) # Pertahankan string untuk wind direction indicator
+            elif str(col).upper() == 'DIRECTION':
+                df[col] = df[col].astype(str) 
             else:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
@@ -128,10 +129,10 @@ def generate_auto_interpretation(df, plot_cols, param_name):
 
     for col in plot_cols[:3]: 
         max_val = df[col].max()
-        max_month_series = df.loc[df[col] == max_val, 'DATE'].values
-        max_month = max_month_series[0] if len(max_month_series) > 0 else "N/A"
         if max_val > 0:
-            st.write(f"- Peluang kemunculan frekuensi kondisi **{col}** tertinggi terjadi pada bulan **{max_month}** (Nilai probabilitas/frekuensi: {max_val}).")
+            max_month_series = df.loc[df[col] == max_val, 'DATE'].values
+            max_month = max_month_series[0] if len(max_month_series) > 0 else "N/A"
+            st.write(f"- Peluang frekuensi/intensitas tertinggi untuk kondisi **{col}** terjadi pada bulan **{max_month}** (Nilai tertinggi: {max_val}).")
 
 # ==========================================
 # 4. DASHBOARD PAGES & VISUALIZATIONS
@@ -143,32 +144,32 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
     
     df = load_data(filename)
     if df is not None and not df.empty:
-        # Exclude kolom teks non-kategori
         plot_cols = [c for c in df.columns if str(c).upper() not in ['DATE', 'DIRECTION']]
         
         col_chart, col_metric = st.columns([3, 1])
         
-        # Anti-crash visuals (penggunaan getattr sebagai default fallback)
+        # Anti-crash visuals: Fallback ke Blues jika warna tidak ditemukan
         safe_colorscale = getattr(px.colors.sequential, colorscale, px.colors.sequential.Blues)
         
         with col_chart:
             st.markdown("### 📈 Interactive Meteogram")
             if chart_type == 'bar':
+                # FIX: Mengubah 'stack' menjadi 'group' agar variasi histogram sumbu-y terlihat dan tidak terlihat datar/sama semua
                 fig = px.bar(
-                    df, x='DATE', y=plot_cols, barmode='stack', 
+                    df, x='DATE', y=plot_cols, barmode='group', 
                     color_discrete_sequence=safe_colorscale,
                     labels={"variable": legend_title, "value": "Nilai / Frekuensi", "DATE": "Bulan"}
                 )
             else: 
                 fig = go.Figure()
-                safe_qualitative = getattr(px.colors.qualitative, 'Plotly', ['#003366', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b'])
+                safe_qualitative = getattr(px.colors.qualitative, 'Plotly', ['#003366', '#d62728', '#2ca02c', '#ff7f0e'])
                 for idx, col in enumerate(plot_cols):
                     fig.add_trace(go.Scatter(
                         x=df['DATE'], y=df[col], mode='lines+markers', 
                         name=str(col), line=dict(width=3, color=safe_qualitative[idx % len(safe_qualitative)])
                     ))
             
-            # Custom Legend Handling
+            # Custom Legend 
             fig.update_layout(
                 xaxis_title="Bulan", 
                 yaxis_title="Frekuensi / Nilai", 
@@ -216,53 +217,98 @@ def render_wind_page():
     
     df = load_data("rekap_wind_2021_2025.xlsx")
     if df is not None and not df.empty:
-        # PENGGABUNGAN PLOT ARAH DAN KECEPATAN: Memuat semua kolom numerik secara kolektif
-        plot_cols = [c for c in df.columns if str(c).upper() not in ['DATE', 'DIRECTION', 'CALM']]
+        # Klasifikasi Kolom Otomatis: Arah (XXX-XXX-XXX format) vs Kecepatan
+        dir_cols = [c for c in df.columns if '-' in str(c) and len(str(c).split('-')) == 3]
+        speed_cols = [c for c in df.columns if c not in dir_cols and str(c).upper() not in ['DATE', 'CALM', 'DIRECTION']]
         
-        col_chart, col_metric = st.columns([3, 1])
-        safe_colorscale = getattr(px.colors.sequential, "Purples", px.colors.sequential.Blues)
-        legend_title = "Kategori Arah/Kecepatan"
+        st.markdown("### 📈 Unified Interactive Windrose & Speed Distribution")
         
-        with col_chart:
-            st.markdown("### 📈 Unified Interactive Meteogram")
-            fig_wind = px.bar(
-                df, x='DATE', y=plot_cols, barmode='stack', 
-                color_discrete_sequence=safe_colorscale,
-                labels={"variable": legend_title, "value": "Frekuensi (%)", "DATE": "Bulan"}
-            )
-            fig_wind.update_layout(
-                xaxis_title="Bulan", 
-                yaxis_title="Frekuensi (%)", 
-                plot_bgcolor="white", 
-                hovermode="x unified",
-                legend_title_text=legend_title
-            )
-            fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            st.plotly_chart(fig_wind, use_container_width=True)
+        # FIX WINDROSE: Menggunakan make_subplots untuk menggabungkan Polar Chart (Arah) dan Bar Chart (Kecepatan)
+        fig_wind = make_subplots(
+            rows=1, cols=2, 
+            specs=[[{'type': 'polar'}, {'type': 'xy'}]],
+            subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
+            horizontal_spacing=0.15
+        )
 
-        with col_metric:
-            st.markdown("### 🌡️ Heatmap Distribusi Angin")
-            df_heat = df.set_index('DATE')[plot_cols].T
-            fig_heat = px.imshow(
-                df_heat, text_auto=".1f", aspect="auto", 
-                color_continuous_scale=safe_colorscale,
-                labels={"x": "Bulan", "y": legend_title, "color": "Frekuensi"}
+        # Plot Arah Angin (Windrose Polar)
+        if dir_cols:
+            avg_dir = df[dir_cols].mean().reset_index()
+            avg_dir.columns = ['Arah', 'Frekuensi']
+            
+            fig_wind.add_trace(
+                go.Barpolar(
+                    r=avg_dir['Frekuensi'],
+                    theta=avg_dir['Arah'],
+                    marker_color=avg_dir['Frekuensi'],
+                    marker_colorscale='Turbo', # Gradasi kontras tinggi sesuai permintaan
+                    name="Arah Angin (Avg)",
+                    showlegend=False
+                ),
+                row=1, col=1
             )
-            fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig_heat, use_container_width=True)
+
+        # Plot Kecepatan Angin (Bar Chart)
+        if speed_cols:
+            safe_colorscale = getattr(px.colors.sequential, "Turbo", px.colors.sequential.Viridis)
+            # Sample warna berdasar jumlah kategori kecepatan agar kontras
+            colors = px.colors.sample_colorscale(safe_colorscale, [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
+            
+            for idx, col in enumerate(speed_cols):
+                fig_wind.add_trace(
+                    go.Bar(
+                        x=df['DATE'], 
+                        y=df[col], 
+                        name=f"{col} Kts",
+                        marker_color=colors[idx]
+                    ),
+                    row=1, col=2
+                )
+        
+        fig_wind.update_layout(
+            barmode='group', # Grouped untuk kecepatan agar mudah dibaca frekuensinya
+            polar=dict(
+                radialaxis=dict(visible=True, showticklabels=True),
+                angularaxis=dict(direction="clockwise")
+            ),
+            legend_title_text="Kategori Kecepatan",
+            height=500,
+            plot_bgcolor="white"
+        )
+        fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', row=1, col=2)
+        fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', title_text="Frekuensi", row=1, col=2)
+        
+        st.plotly_chart(fig_wind, use_container_width=True)
+
+        # Heatmap Terpisah untuk Wind
+        st.markdown("### 🌡️ Heatmap Profil Angin")
+        col_heat1, col_heat2 = st.columns(2)
+        
+        with col_heat1:
+            if dir_cols:
+                st.markdown("**Distribusi Arah Angin**")
+                df_heat_dir = df.set_index('DATE')[dir_cols].T
+                fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
+                                   labels={"x": "Bulan", "y": "Arah", "color": "Frekuensi"})
+                fig_hd.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig_hd, use_container_width=True)
+                
+        with col_heat2:
+            if speed_cols:
+                st.markdown("**Distribusi Kecepatan Angin**")
+                df_heat_speed = df.set_index('DATE')[speed_cols].T
+                fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
+                                   labels={"x": "Bulan", "y": "Kecepatan (Kts)", "color": "Frekuensi"})
+                fig_hs.update_layout(margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig_hs, use_container_width=True)
             
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
-        
         with col_insight:
-            generate_auto_interpretation(df, plot_cols, "Wind Analysis")
             st.success("✅ **Operational Note:** " + get_aviation_notes('Wind'))
-            
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
             st.dataframe(df, use_container_width=True, hide_index=True)
-            
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name="rekap_wind_2021_2025.csv", mime="text/csv",
