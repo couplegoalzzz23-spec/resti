@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 import os
 
 # ==========================================
-# 1. CONFIGURATION & UI SETUP
+# 1. KONFIGURASI APLIKASI & UI
 # ==========================================
 st.set_page_config(
     page_title="Aviation Climatology Dashboard",
@@ -14,174 +14,158 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for BMKG Blue Accent & Clean Look
+# Custom CSS untuk tampilan Bersih, Modern, dan Aksen Biru BMKG
 st.markdown("""
     <style>
-    .stApp { background-color: #FFFFFF; }
-    h1, h2, h3 { color: #0a4c8a; } /* BMKG Blue Accent */
-    .st-expander { border-color: #0a4c8a !important; }
-    div[data-testid="stMetricValue"] { color: #0a4c8a; }
+    .stApp { background-color: #F8F9FA; }
+    h1, h2, h3, h4 { color: #003366; font-family: 'Arial', sans-serif; }
+    .st-expander { border: 1px solid #003366 !important; border-radius: 8px; background-color: #FFFFFF; }
+    div[data-testid="stMetricValue"] { color: #003366; font-weight: bold; }
+    .stDataFrame { background-color: #FFFFFF; border-radius: 8px; }
+    hr { border-top: 2px solid #E0E0E0; }
     </style>
 """, unsafe_allow_html=True)
 
-# Fixed Month Order based on ACS Standards
 MONTHS_ORDER = ['JANUARY', 'FEBRUARY', 'MARCH', 'APRIL', 'MAY', 'JUNE', 
                 'JULY', 'AUGUST', 'SEPTEMBER', 'OCTOBER', 'NOVEMBER', 'DECEMBER']
 
 # ==========================================
-# 2. DATA LOADER MODULE
+# 2. MODUL DATA LOADER & AUTO-CLEANER TANGGUH
 # ==========================================
 @st.cache_data
 def load_data(filename):
-    """Load and validate excel files robustly."""
+    """Membaca file Excel dengan penanganan error, header ganda, dan noise teks."""
     filepath = os.path.join("data", filename)
     if not os.path.exists(filepath):
-        st.error(f"🚨 File tidak ditemukan: {filepath}. Pastikan file ada di folder 'data/'.")
-        return None
+        return None, f"File tidak ditemukan: {filepath}"
+    
     try:
-        # Baca data dan paksa urutan bulan
+        # Baca secara default
         df = pd.read_excel(filepath)
-        if 'DATE' in df.columns:
-            df['DATE'] = pd.Categorical(df['DATE'], categories=MONTHS_ORDER, ordered=True)
-            df = df.sort_values('DATE').reset_index(drop=True)
-        return df
+        
+        # Penanganan khusus jika header ada di baris kedua (sering terjadi di format BMKG/Wind)
+        if 'DATE' not in df.columns:
+            if 'DATE' in df.values[0]: # Jika header ada di row index 0
+                df.columns = df.iloc[0]
+                df = df[1:].reset_index(drop=True)
+            else: # Coba skip row pertama
+                df = pd.read_excel(filepath, header=1)
+                
+        if 'DATE' not in df.columns:
+            return None, "Kolom 'DATE' tidak ditemukan meskipun sudah auto-detect."
+
+        # 1. Hapus kolom 'Unnamed'
+        df = df.loc[:, ~df.columns.str.contains('^Unnamed')]
+        
+        # 2. Filter hanya baris yang berisi nama bulan yang valid (Menghilangkan catatan/notes di Excel)
+        df = df[df['DATE'].isin(MONTHS_ORDER)].copy()
+        
+        # 3. Urutkan bulan secara kronologis (Jan - Des)
+        df['DATE'] = pd.Categorical(df['DATE'], categories=MONTHS_ORDER, ordered=True)
+        df = df.sort_values('DATE').reset_index(drop=True)
+        
+        # 4. Paksa semua kolom nilai menjadi numerik (Crucial step agar Plotly tidak error/acak-acakan)
+        for col in df.columns:
+            if col not in ['DATE', 'DIRECTION']:  # DIRECTION pada angin adalah string/kategorikal
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                
+        return df, "Success"
     except Exception as e:
-        st.error(f"🚨 Gagal membaca file {filename}: {e}")
-        return None
+        return None, f"Gagal membaca data: {e}"
 
 # ==========================================
-# 3. INTERPRETATION & AVIATION NOTES MODULE
+# 3. MODUL AVIATION NOTES & HELPER
 # ==========================================
 def get_aviation_notes(parameter):
     notes = {
-        "Temperature Freq": "Suhu tinggi (>30°C) menyebabkan penurunan densitas udara (High Density Altitude), yang membutuhkan *take-off roll* lebih panjang dan membatasi *Maximum Take-off Weight* (MTOW).",
-        "Temperature Mean": "Variasi ekstrim suhu harian mempengaruhi perencanaan beban muatan dan performa daya dorong mesin pesawat.",
-        "Relative Humidity": "RH yang secara konsisten tinggi (>80%) menandakan potensi tinggi pembentukan kabut (fog), embun, atau awan konvektif rendah saat dipicu oleh pemanasan permukaan.",
-        "Visibility": "Visibility di bawah 1500m dapat memicu transisi ke kondisi terbang instrumen (IFR) dan menghambat operasi VFR.",
-        "Cloud Base": "Ceiling rendah (Base <1000 ft) secara langsung mempengaruhi *decision height* saat *approach* dan dapat menyebabkan instruksi *go-around* jika visual ke runway tidak memadai.",
-        "Wind": "Dominasi angin lintas (Crosswind) atau angin buritan (Tailwind) menentukan pemilihan arah *runway-in-use* dan batas aman operasi pesawat ringan."
+        "Temperature Freq": "Suhu tinggi berkaitan dengan peningkatan density altitude. Hal ini mengurangi performa aerodinamis dan mesin pesawat, membutuhkan take-off roll yang lebih panjang, dan berpotensi mengurangi Maximum Take-off Weight (MTOW).",
+        "Temperature Mean": "Pemantauan fluktuasi suhu harian sangat penting untuk perencanaan beban muatan (payload) komersial dan efisiensi konsumsi bahan bakar jet.",
+        "Relative Humidity": "RH yang tinggi (>80%) dengan suhu titik embun (dew point) yang mendekati suhu aktual mendukung pembentukan low cloud, embun, atau fog yang berdampak langsung pada jarak pandang pendaratan.",
+        "Visibility": "Visibility rendah (terutama < 1500m) meningkatkan potensi gangguan operasi approach dan landing. Seringkali memaksa pengalihan penerbangan (divert) atau implementasi Low Visibility Procedures (LVP).",
+        "Cloud Base": "Cloud base rendah (< 1000 ft) secara drastis meningkatkan peluang ceiling di bawah standar VFR. Membutuhkan instrumen precision approach (ILS) untuk pendaratan yang aman.",
+        "Wind": "Dominasi arah angin (wind rose) menjadi referensi utama evaluasi konfigurasi runway-in-use. Komponen crosswind yang kuat berisiko untuk pesawat berbadan kecil."
     }
-    return notes.get(parameter, "Catatan operasional tidak tersedia.")
+    return notes.get(parameter, "")
+
+def get_download_link(df, filename):
+    csv = df.to_csv(index=False).encode('utf-8')
+    st.download_button(
+        label="📥 Download Data CSV",
+        data=csv,
+        file_name=filename,
+        mime="text/csv",
+        use_container_width=True
+    )
 
 # ==========================================
-# 4. PLOTTING MODULE
+# 4. MODUL HALAMAN (PAGES)
 # ==========================================
-def plot_stacked_bar(df, x_col, y_cols, title, color_scale):
-    fig = px.bar(df, x=x_col, y=y_cols, title=title, 
-                 color_discrete_sequence=color_scale,
-                 barmode='stack')
-    fig.update_layout(xaxis_title="Bulan", yaxis_title="Frekuensi (%)", 
-                      legend_title="Kategori", plot_bgcolor="white", hovermode="x unified")
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    return fig
 
-def plot_line_meteogram(df, x_col, y_cols, title):
-    fig = go.Figure()
-    colors = ['#0a4c8a', '#d62728', '#2ca02c'] # Blue, Red, Green
-    for idx, col in enumerate(y_cols):
-        fig.add_trace(go.Scatter(x=df[x_col], y=df[col], mode='lines+markers', 
-                                 name=col, line=dict(width=3, color=colors[idx % len(colors)])))
-    fig.update_layout(title=title, xaxis_title="Bulan", yaxis_title="Nilai",
-                      plot_bgcolor="white", hovermode="x unified")
-    fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='LightGray')
-    return fig
-
-# ==========================================
-# 5. PAGE LOGIC & RENDER MODULES
-# ==========================================
 def render_home():
     st.title("✈️ Aviation Climatology Dashboard")
+    st.markdown("---")
     st.markdown("""
-    ### Tentang Dashboard
-    Dashboard ini menyajikan **Karakter Klimatologi Penerbangan** berdasarkan data ACS (Aerodrome Climatological Summary) periode **2021–2025**. 
+    ### Tujuan Dashboard
+    Dashboard ini berfungsi untuk menampilkan **KARAKTER KLIMATOLOGI PENERBANGAN** berdasarkan data ACS (*Aerodrome Climatological Summary*) hasil rekap rata-rata periode **2021–2025**.
     
-    Fokus utama sistem ini adalah menjawab: *"How often does a condition occur?"* dengan menampilkan distribusi probabilitas, frekuensi, dan interpretasi metorologi yang krusial untuk keselamatan dan efisiensi operasi penerbangan.
+    Fokus sistem ini bukan sekadar menyajikan nilai rata-rata, melainkan menjawab pertanyaan fundamental meteorologi operasional: **"How often does a condition occur?"** melalui analisis distribusi, frekuensi, dan probabilitas.
     """)
-    col1, col2, col3 = st.columns(3)
-    col1.metric("Periode Data", "2021 - 2025")
-    col2.metric("Total Parameter", "6")
-    col3.metric("Standar Referensi", "ICAO / WMO")
+    
+    st.markdown("### Statistik Dataset")
+    c1, c2, c3, c4 = st.columns(4)
+    c1.metric("Periode Data", "2021 - 2025", "Update Terakhir")
+    c2.metric("Total File", "6 Excel Files", "Tervalidasi")
+    c3.metric("Fokus Analisis", "Frekuensi & Peluang")
+    c4.metric("Resolusi", "Bulanan (Jan-Des)")
 
 def render_temp_freq():
-    st.header("🌡️ Temperature Frequency")
-    df = load_data("rekap_temperature_2021_2025.xlsx")
-    if df is not None:
-        st.info("Karakteristik klimatologi probabilitas kemunculan suhu di bandara.")
-        
-        # Plot
-        temp_cols = [col for col in df.columns if col not in ['DATE', 'Unnamed: 10']]
-        fig = plot_stacked_bar(df, 'DATE', temp_cols, "Distribusi Frekuensi Suhu per Bulan", px.colors.sequential.Blues)
-        st.plotly_chart(fig, use_container_width=True)
-        
-        # Interpretasi Otomatis
-        st.subheader("💡 Auto-Interpretation")
-        if '> 35' in df.columns:
-            max_hot_month = df.loc[df['> 35'].idxmax(), 'DATE']
-            st.write(f"- **Peluang Suhu Ekstrim (>35°C) Tertinggi:** Bulan **{max_hot_month}**.")
-        if '25 - 30' in df.columns:
-            max_ideal_month = df.loc[df['25 - 30'].idxmax(), 'DATE']
-            st.write(f"- **Peluang Suhu 25-30°C Tertinggi:** Bulan **{max_ideal_month}**.")
-
-        # Notes & Data
-        st.warning(f"**Aviation Operational Notes:** {get_aviation_notes('Temperature Freq')}")
-        
-        with st.expander("Lihat Data Asli & Unduh"):
-            st.dataframe(df)
-            csv = df.to_csv(index=False).encode('utf-8')
-            st.download_button("Download CSV", data=csv, file_name="temp_freq.csv", mime="text/csv")
-
-def render_rh():
-    st.header("💧 Relative Humidity")
-    df = load_data("rekap_rh_max_min_2021_2025.xlsx")
-    if df is not None:
-        st.info("Karakteristik kelembapan relatif (Mean, Max, Min).")
-        
-        fig = plot_line_meteogram(df, 'DATE', ['MEAN', 'MAX', 'MIN'], "Meteogram Relative Humidity (RH)")
-        st.plotly_chart(fig, use_container_width=True)
-
-        st.subheader("💡 Auto-Interpretation")
-        max_rh_month = df.loc[df['MEAN'].idxmax(), 'DATE']
-        min_rh_month = df.loc[df['MEAN'].idxmin(), 'DATE']
-        st.write(f"- **Bulan Paling Lembap (Mean Tertinggi):** {max_rh_month}")
-        st.write(f"- **Bulan Paling Kering (Mean Terendah):** {min_rh_month}")
-
-        st.warning(f"**Aviation Operational Notes:** {get_aviation_notes('Relative Humidity')}")
-        
-        with st.expander("Lihat Data Asli & Unduh"):
-            st.dataframe(df)
-            st.download_button("Download CSV", data=df.to_csv(index=False).encode('utf-8'), 
-                               file_name="rh_data.csv", mime="text/csv")
-
-# ==========================================
-# MAIN APP ROUTING
-# ==========================================
-def main():
-    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=100) # Ganti dengan assets/logo.png
-    st.sidebar.title("Navigasi ACS")
-    menu = st.sidebar.radio("Pilih Parameter:", 
-                            ["Home", 
-                             "Temperature Frequency", 
-                             "Temperature Mean Max Min", 
-                             "Relative Humidity", 
-                             "Visibility", 
-                             "Cloud Base (HS)", 
-                             "Wind"])
+    st.title("🌡️ Temperature Frequency")
+    st.info("Menampilkan distribusi peluang terjadinya rentang suhu tertentu dalam satu bulan (%).")
     
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Data Periode: 2021 - 2025")
+    df, status = load_data("rekap_temperature_2021_2025.xlsx")
+    if df is not None:
+        cols = [c for c in df.columns if c != 'DATE']
+        
+        # Visualisasi: Stacked Bar
+        fig1 = px.bar(df, x='DATE', y=cols, title="Distribusi Frekuensi Rentang Suhu",
+                      color_discrete_sequence=px.colors.sequential.YlOrRd, barmode='stack')
+        fig1.update_layout(xaxis_title="Bulan", yaxis_title="Frekuensi (%)", legend_title="Rentang (°C)", plot_bgcolor="white", hovermode="x unified")
+        fig1.update_xaxes(showgrid=True, gridcolor='#f0f0f0'); fig1.update_yaxes(showgrid=True, gridcolor='#f0f0f0')
+        st.plotly_chart(fig1, use_container_width=True)
 
-    if menu == "Home":
-        render_home()
-    elif menu == "Temperature Frequency":
-        render_temp_freq()
-    elif menu == "Relative Humidity":
-        render_rh()
-    # Anda dapat mengembangkan fungsi render_temp_mean, render_vis, dll 
-    # menggunakan pola yang sama persis dengan fungsi render_rh atau render_temp_freq di atas.
-    else:
-        st.info(f"Modul {menu} dalam tahap penyusunan menggunakan pola modular arsitektur.")
+        # Visualisasi: Heatmap
+        st.markdown("### Heatmap Probabilitas Suhu")
+        fig2 = go.Figure(data=go.Heatmap(z=df[cols].T.values, x=df['DATE'], y=cols, colorscale='YlOrRd'))
+        fig2.update_layout(xaxis_title="Bulan", yaxis_title="Rentang Suhu (°C)")
+        st.plotly_chart(fig2, use_container_width=True)
 
-if __name__ == "__main__":
-    main()
+        # Interpretasi & Ops Notes
+        st.markdown("---")
+        c1, c2 = st.columns(2)
+        with c1:
+            st.subheader("💡 Interpretasi Meteorologi")
+            if '> 35' in df.columns:
+                hot_month = df.loc[df['> 35'].idxmax(), 'DATE']
+                st.write(f"- Bulan dengan peluang kemunculan **suhu ekstrim (>35°C) tertinggi** adalah **{hot_month}**.")
+            if '20 - 25' in df.columns:
+                cool_month = df.loc[df['20 - 25'].idxmax(), 'DATE']
+                st.write(f"- Bulan dengan peluang kemunculan **suhu sejuk (20-25°C) tertinggi** adalah **{cool_month}**.")
+        with c2:
+            st.subheader("⚠️ Aviation Operational Notes")
+            st.warning(get_aviation_notes("Temperature Freq"))
+        
+        with st.expander("Tampilkan Data Asli (Original Data Table)"):
+            st.dataframe(df, use_container_width=True)
+            c_down, _, _ = st.columns(3)
+            with c_down: get_download_link(df, "temp_frequency.csv")
+    else: st.error(status)
+
+def render_temp_mean_max_min():
+    st.title("📈 Temperature Mean, Max, Min")
+    st.info("Karakteristik klimatologi rentang suhu harian di aerodrome.")
+    
+    df, status = load_data("rekap_temp_max_min_2021_2025.xlsx")
+    if df is not None:
+        fig = go.Figure()
+        # Area Fill Plotly: Tambahkan Min, lalu Max dengan fill='tonexty'
+        if
