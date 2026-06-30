@@ -31,17 +31,17 @@ BAKU_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'O
 # ==========================================
 @st.cache_data(show_spinner=False)
 def load_data(filename):
-    """Membaca data secara dinamis dan anti-error."""
+    """Membaca data secara dinamis, anti-error, dan robust handling."""
     filepath = filename if os.path.exists(filename) else os.path.join("data", filename)
     
     if not os.path.exists(filepath):
-        st.error(f"🚨 File tidak ditemukan: `{filename}`. Pastikan nama file di GitHub sesuai.")
+        st.error(f"🚨 File tidak ditemukan: `{filename}`. Pastikan nama file sesuai di repositori.")
         return None
         
     try:
         raw_df = pd.read_excel(filepath, header=None)
         
-        # Auto-detect Header Row
+        # Auto-detect Header Row secara dinamis
         header_idx = 0
         for i in range(min(15, len(raw_df))):
             row_vals = [str(x).upper().strip() for x in raw_df.iloc[i].fillna('')]
@@ -55,9 +55,11 @@ def load_data(filename):
         df = raw_df.iloc[header_idx+1:].copy()
         df.columns = raw_df.iloc[header_idx].astype(str).str.strip()
         
+        # Bersihkan kolom NaN / Unnamed
         df = df.loc[:, df.columns.notna()]
         df = df.loc[:, ~df.columns.str.lower().str.contains('nan|unnamed')]
         
+        # Deteksi dan standarisasi kolom tanggal/bulan
         date_col = None
         for col in df.columns:
             if str(col).upper() in ['DATE', 'BULAN', 'MONTH']:
@@ -68,27 +70,38 @@ def load_data(filename):
         else:
             df = df.rename(columns={df.columns[0]: 'DATE'})
 
-        valid_months = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'MEI', 'JUN', 'JUL', 'AUG', 'AGU', 'SEP', 'OCT', 'OKT', 'NOV', 'DEC', 'DES']
+        valid_months_map = {
+            'JAN': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'APR': 'Apr', 'MAY': 'Mei', 'MEI': 'Mei',
+            'JUN': 'Jun', 'JUL': 'Jul', 'AUG': 'Agu', 'AGU': 'Agu', 'SEP': 'Sep', 'OCT': 'Okt',
+            'OKT': 'Okt', 'NOV': 'Nov', 'DEC': 'Des', 'DES': 'Des'
+        }
+        
         df['TEMP_DATE'] = df['DATE'].astype(str).str.upper().str.strip().str[:3]
-        df = df[df['TEMP_DATE'].isin(valid_months)].copy()
+        df = df[df['TEMP_DATE'].isin(valid_months_map.keys())].copy()
+        
+        # FIX: Mencegah crash Length of values mismatch (Membuang duplikasi jika file Excel terbaca ganda / ada baris sisa)
+        df = df.drop_duplicates(subset=['TEMP_DATE'], keep='first')
+        
+        df['DATE'] = df['TEMP_DATE'].map(valid_months_map)
         df = df.drop(columns=['TEMP_DATE'])
         
-        if len(df) >= 12:
-            df['DATE'] = BAKU_MONTHS[:len(df)]
+        # Mengurutkan bulan sesuai kalender (Jan - Des)
+        df['DATE_CAT'] = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
+        df = df.sort_values('DATE_CAT').drop(columns=['DATE_CAT']).reset_index(drop=True)
         
-        # PERBAIKAN: Pisahkan penanganan angka dan string (khususnya kolom DIRECTION) agar tidak error
+        # Casting ke numeric secara aman (kecuali DATE dan DIRECTION)
         for col in df.columns:
             if col == 'DATE':
                 continue
-            elif col == 'DIRECTION':
-                df[col] = df[col].astype(str) # Pertahankan sebagai huruf
+            elif col.upper() == 'DIRECTION':
+                df[col] = df[col].astype(str) # Pertahankan string untuk wind direction indicator
             else:
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
             
-        return df.reset_index(drop=True)
+        return df
         
     except Exception as e:
-        st.error(f"🚨 Gagal memproses file {filename}: {e}")
+        st.error(f"🚨 Gagal memproses file {filename}: {str(e)}")
         return None
 
 # ==========================================
@@ -115,7 +128,8 @@ def generate_auto_interpretation(df, plot_cols, param_name):
 
     for col in plot_cols[:3]: 
         max_val = df[col].max()
-        max_month = df.loc[df[col] == max_val, 'DATE'].values[0]
+        max_month_series = df.loc[df[col] == max_val, 'DATE'].values
+        max_month = max_month_series[0] if len(max_month_series) > 0 else "N/A"
         if max_val > 0:
             st.write(f"- Peluang kemunculan frekuensi kondisi **{col}** tertinggi terjadi pada bulan **{max_month}** (Nilai probabilitas/frekuensi: {max_val}).")
 
@@ -128,27 +142,40 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
     st.markdown("---")
     
     df = load_data(filename)
-    if df is not None:
-        # PERBAIKAN: Exclude kolom yang sifatnya string (non-numeric) dari list plot_cols
-        plot_cols = [c for c in df.columns if c not in ['DATE', 'DIRECTION']]
+    if df is not None and not df.empty:
+        # Exclude kolom teks non-kategori
+        plot_cols = [c for c in df.columns if str(c).upper() not in ['DATE', 'DIRECTION']]
         
         col_chart, col_metric = st.columns([3, 1])
+        
+        # Anti-crash visuals (penggunaan getattr sebagai default fallback)
+        safe_colorscale = getattr(px.colors.sequential, colorscale, px.colors.sequential.Blues)
         
         with col_chart:
             st.markdown("### 📈 Interactive Meteogram")
             if chart_type == 'bar':
-                fig = px.bar(df, x='DATE', y=plot_cols, barmode='stack', 
-                             color_discrete_sequence=px.colors.sequential.__dict__[colorscale])
+                fig = px.bar(
+                    df, x='DATE', y=plot_cols, barmode='stack', 
+                    color_discrete_sequence=safe_colorscale,
+                    labels={"variable": legend_title, "value": "Nilai / Frekuensi", "DATE": "Bulan"}
+                )
             else: 
                 fig = go.Figure()
-                colors = ['#003366', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b']
+                safe_qualitative = getattr(px.colors.qualitative, 'Plotly', ['#003366', '#d62728', '#2ca02c', '#ff7f0e', '#9467bd', '#8c564b'])
                 for idx, col in enumerate(plot_cols):
-                    fig.add_trace(go.Scatter(x=df['DATE'], y=df[col], mode='lines+markers', 
-                                             name=col, line=dict(width=3, color=colors[idx % len(colors)])))
+                    fig.add_trace(go.Scatter(
+                        x=df['DATE'], y=df[col], mode='lines+markers', 
+                        name=str(col), line=dict(width=3, color=safe_qualitative[idx % len(safe_qualitative)])
+                    ))
             
-            # PERBAIKAN: legend_title diterapkan secara dinamis sesuai parameter
-            fig.update_layout(xaxis_title="Bulan", yaxis_title="Frekuensi / Nilai", 
-                              plot_bgcolor="white", hovermode="x unified", legend_title=legend_title)
+            # Custom Legend Handling
+            fig.update_layout(
+                xaxis_title="Bulan", 
+                yaxis_title="Frekuensi / Nilai", 
+                plot_bgcolor="white", 
+                hovermode="x unified",
+                legend_title_text=legend_title
+            )
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
             st.plotly_chart(fig, use_container_width=True)
@@ -156,7 +183,11 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
         with col_metric:
             st.markdown("### 🌡️ Heatmap Profil")
             df_heat = df.set_index('DATE')[plot_cols].T
-            fig_heat = px.imshow(df_heat, text_auto=".1f", aspect="auto", color_continuous_scale=colorscale)
+            fig_heat = px.imshow(
+                df_heat, text_auto=".1f", aspect="auto", 
+                color_continuous_scale=safe_colorscale,
+                labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
+            )
             fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
             st.plotly_chart(fig_heat, use_container_width=True)
             
@@ -175,50 +206,69 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name=f"{filename.replace('.xlsx', '')}.csv", mime="text/csv",
                                use_container_width=True)
+    else:
+        st.warning("⚠️ Data kosong atau gagal diolah.")
 
-# PERBAIKAN: Dibuatkan fungsi khusus Wind Page agar Wind Rose Direction dan Speed Bar Chart tampil berdampingan
 def render_wind_page():
-    st.title("🌬️ Wind Analysis")
+    st.title("🌬️ Wind Analysis (Arah & Kecepatan)")
     st.markdown(f"*{get_aviation_notes('Wind')}*")
     st.markdown("---")
     
     df = load_data("rekap_wind_2021_2025.xlsx")
-    if df is not None:
-        # Pisahkan kolom berdasarkan kategori angin (Deteksi format "35 - 36 - 01" untuk arah, sisanya untuk kecepatan)
-        dir_cols = [c for c in df.columns if '-' in str(c) and len(str(c).split('-')) == 3]
-        speed_cols = [c for c in df.columns if c not in dir_cols and c not in ['DATE', 'CALM', 'DIRECTION']]
+    if df is not None and not df.empty:
+        # PENGGABUNGAN PLOT ARAH DAN KECEPATAN: Memuat semua kolom numerik secara kolektif
+        plot_cols = [c for c in df.columns if str(c).upper() not in ['DATE', 'DIRECTION', 'CALM']]
         
-        col1, col2 = st.columns(2)
+        col_chart, col_metric = st.columns([3, 1])
+        safe_colorscale = getattr(px.colors.sequential, "Purples", px.colors.sequential.Blues)
+        legend_title = "Kategori Arah/Kecepatan"
         
-        # WIND ROSE (ARAH ANGIN)
-        with col1:
-            st.markdown("### 🧭 Rata-Rata Arah Angin (Wind Rose)")
-            if dir_cols:
-                # Menghitung probabilitas rata-rata bulanan untuk setiap arah angin
-                avg_dir = df[dir_cols].mean().reset_index()
-                avg_dir.columns = ['Arah', 'Frekuensi']
-                
-                fig_rose = px.bar_polar(avg_dir, r='Frekuensi', theta='Arah', 
-                                        color='Frekuensi', color_continuous_scale="Purples",
-                                        template="plotly_white")
-                fig_rose.update_layout(legend_title="Probabilitas")
-                st.plotly_chart(fig_rose, use_container_width=True)
-            else:
-                st.warning("Data struktur arah angin tidak terdeteksi.")
-        
-        # BAR CHART (KECEPATAN ANGIN)
-        with col2:
-            st.markdown("### 📊 Distribusi Kecepatan Angin (Bulan)")
-            if speed_cols:
-                fig_speed = px.bar(df, x='DATE', y=speed_cols, barmode='stack', 
-                                   color_discrete_sequence=px.colors.sequential.Purples)
-                fig_speed.update_layout(xaxis_title="Bulan", yaxis_title="Frekuensi (%)",
-                                        legend_title="Kategori Kecepatan (Knots)", plot_bgcolor="white")
-                st.plotly_chart(fig_speed, use_container_width=True)
-                
+        with col_chart:
+            st.markdown("### 📈 Unified Interactive Meteogram")
+            fig_wind = px.bar(
+                df, x='DATE', y=plot_cols, barmode='stack', 
+                color_discrete_sequence=safe_colorscale,
+                labels={"variable": legend_title, "value": "Frekuensi (%)", "DATE": "Bulan"}
+            )
+            fig_wind.update_layout(
+                xaxis_title="Bulan", 
+                yaxis_title="Frekuensi (%)", 
+                plot_bgcolor="white", 
+                hovermode="x unified",
+                legend_title_text=legend_title
+            )
+            fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
+            fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
+            st.plotly_chart(fig_wind, use_container_width=True)
+
+        with col_metric:
+            st.markdown("### 🌡️ Heatmap Distribusi Angin")
+            df_heat = df.set_index('DATE')[plot_cols].T
+            fig_heat = px.imshow(
+                df_heat, text_auto=".1f", aspect="auto", 
+                color_continuous_scale=safe_colorscale,
+                labels={"x": "Bulan", "y": legend_title, "color": "Frekuensi"}
+            )
+            fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
+            st.plotly_chart(fig_heat, use_container_width=True)
+            
         st.markdown("---")
-        st.markdown("### 🗃️ Original Data Table")
-        st.dataframe(df, use_container_width=True, hide_index=True)
+        col_insight, col_data = st.columns([1, 1])
+        
+        with col_insight:
+            generate_auto_interpretation(df, plot_cols, "Wind Analysis")
+            st.success("✅ **Operational Note:** " + get_aviation_notes('Wind'))
+            
+        with col_data:
+            st.markdown("### 🗃️ Original Data Table")
+            st.dataframe(df, use_container_width=True, hide_index=True)
+            
+            csv = df.to_csv(index=False).encode('utf-8')
+            st.download_button(label="⬇️ Download CSV", data=csv, 
+                               file_name="rekap_wind_2021_2025.csv", mime="text/csv",
+                               use_container_width=True)
+    else:
+        st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
 def render_home():
     st.title("✈️ Aviation Climatology Dashboard")
@@ -244,7 +294,7 @@ def render_home():
         st.write("📅 **Periode Data:** 2021 - 2025")
         st.write("📂 **Total File / Parameter:** 6 Parameter")
         st.write("📈 **Data Integrity:** Original (No Smoothing)")
-        st.write("⚙️ **Modul Engine:** Automated Parsing")
+        st.write("⚙️ **Modul Engine:** Automated Parsing & Robust Data Loader")
 
 # ==========================================
 # 5. MAIN ROUTER
@@ -267,7 +317,7 @@ def main():
     st.sidebar.markdown("---")
     st.sidebar.caption("Aviation Climatology Dashboard © 2026")
 
-    # PERBAIKAN: Menyisipkan argumen legend_title yang dinamis dan valid
+    # Routing berdasarkan menu yang dipilih
     if menu == "Home":
         render_home()
     elif menu == "Temperature Frequency":
@@ -281,7 +331,7 @@ def main():
     elif menu == "Cloud Base (HS)":
         render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Blues", "Tinggi Awan (Feet)")
     elif menu == "Wind":
-        render_wind_page() # Modul Wind Khusus dipanggil di sini
+        render_wind_page()
 
 if __name__ == "__main__":
     main()
