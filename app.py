@@ -229,6 +229,7 @@ def render_wind_page():
             specs=[[{'type': 'polar'}, {'type': 'xy'}]],
             
             subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
+            
             horizontal_spacing=0.15
         )
 
