@@ -9,7 +9,7 @@ import os
 # 1. CONFIGURATION & UI SETUP
 # ==========================================
 st.set_page_config(
-    page_title="Aviation Climatology Dashboard",
+    page_title="Aviation Weather Statistics",
     page_icon="✈️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -227,6 +227,7 @@ def render_wind_page():
         fig_wind = make_subplots(
             rows=1, cols=2, 
             specs=[[{'type': 'polar'}, {'type': 'xy'}]],
+            
             subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
             horizontal_spacing=0.15
         )
