@@ -346,7 +346,7 @@ def render_home():
 # 5. MAIN ROUTER
 # ==========================================
 def main():
-    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=80)
+   
     st.sidebar.markdown("## 🧭 Navigasi Menu")
     st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
     
