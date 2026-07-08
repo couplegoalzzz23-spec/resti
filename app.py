@@ -317,7 +317,7 @@ def render_wind_page():
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
 def render_home():
-    st.title("✈️ Aviation Climatology Dashboard")
+    st.title("Aviation Weather Statistics")
     st.markdown("---")
     
     col1, col2 = st.columns([2, 1])
@@ -347,7 +347,7 @@ def render_home():
 # ==========================================
 def main():
    
-    st.sidebar.markdown("## 🧭 Navigasi Menu")
+    st.sidebar.markdown("## NAVIGASI MENU")
     st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
     
     menu = st.sidebar.radio("", [
