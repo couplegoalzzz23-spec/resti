@@ -227,7 +227,7 @@ def render_wind_page():
         fig_wind = make_subplots(
             rows=1, cols=2, 
             specs=[[{'type': 'polar'}, {'type': 'xy'}]],
-            subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
+            subplot_titles=(" (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
             horizontal_spacing=0.15
         )
 
