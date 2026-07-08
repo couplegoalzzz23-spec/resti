@@ -9,7 +9,7 @@ import os
 # 1. CONFIGURATION & UI SETUP
 # ==========================================
 st.set_page_config(
-    page_title="Aviation Climatology Dashboard",
+    page_title="Aviation Weather Statistics",
     page_icon="✈️",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -361,7 +361,7 @@ def main():
     ])
     
     st.sidebar.markdown("---")
-    st.sidebar.caption("Aviation Climatology Dashboard © 2026")
+    st.sidebar.caption("Aviation Weather Statistics © 2026")
 
     # Routing berdasarkan menu yang dipilih
     if menu == "Home":
