@@ -409,41 +409,46 @@ def render_home():
 # 5. MAIN ROUTER
 # ==========================================
 def main():
-    st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=80)
-    st.sidebar.markdown("## 🧭 Navigasi Menu")
-    st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
-    
-    menu = st.sidebar.radio(
-        label="Navigasi Halaman", 
-        options=[
-            "Home", 
-            "Temperature Frequency", 
-            "Temperature Mean Max Min", 
-            "Relative Humidity", 
-            "Visibility", 
-            "Cloud Base (HS)", 
-            "Wind"
-        ],
-        label_visibility="collapsed"
-    )
-    
-    st.sidebar.markdown("---")
-    st.sidebar.caption("Aviation Meteorology Dashboard © 2026")
+    try:
+        st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=80)
+        st.sidebar.markdown("## 🧭 Navigasi Menu")
+        st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
+        
+        menu = st.sidebar.radio(
+            label="Navigasi Halaman", 
+            options=[
+                "Home", 
+                "Temperature Frequency", 
+                "Temperature Mean Max Min", 
+                "Relative Humidity", 
+                "Visibility", 
+                "Cloud Base (HS)", 
+                "Wind"
+            ],
+            label_visibility="collapsed"
+        )
+        
+        st.sidebar.markdown("---")
+        st.sidebar.caption("Aviation Meteorology Dashboard © 2026")
 
-    if menu == "Home":
-        render_home()
-    elif menu == "Temperature Frequency":
-        render_generic_page("🌡️ Temperature Frequency", "rekap_temperature_2021_2025.xlsx", "Temperature Freq", 'bar', "Rainbow", "Kategori Suhu (°C)")
-    elif menu == "Temperature Mean Max Min":
-        render_generic_page("📈 Temperature Mean Max Min", "rekap_temp_max_min_2021_2025.xlsx", "Temperature Mean", 'line', "Rainbow", "Parameter Suhu")
-    elif menu == "Relative Humidity":
-        render_generic_page("💧 Relative Humidity", "rekap_rh_max_min_2021_2025.xlsx", "Relative Humidity", 'line', "Rainbow", "Waktu Pengamatan (UTC)")
-    elif menu == "Visibility":
-        render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Rainbow", "Kategori Vis (Meter)")
-    elif menu == "Cloud Base (HS)":
-        render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Rainbow", "Kategori HS (Feet)")
-    elif menu == "Wind":
-        render_wind_page()
+        if menu == "Home":
+            render_home()
+        elif menu == "Temperature Frequency":
+            render_generic_page("🌡️ Temperature Frequency", "rekap_temperature_2021_2025.xlsx", "Temperature Freq", 'bar', "Rainbow", "Kategori Suhu (°C)")
+        elif menu == "Temperature Mean Max Min":
+            render_generic_page("📈 Temperature Mean Max Min", "rekap_temp_max_min_2021_2025.xlsx", "Temperature Mean", 'line', "Rainbow", "Parameter Suhu")
+        elif menu == "Relative Humidity":
+            render_generic_page("💧 Relative Humidity", "rekap_rh_max_min_2021_2025.xlsx", "Relative Humidity", 'line', "Rainbow", "Waktu Pengamatan (UTC)")
+        elif menu == "Visibility":
+            render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Rainbow", "Kategori Vis (Meter)")
+        elif menu == "Cloud Base (HS)":
+            render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Rainbow", "Kategori HS (Feet)")
+        elif menu == "Wind":
+            render_wind_page()
+            
+    except Exception as e:
+        st.error(f"🚨 Terjadi kesalahan sistem: {str(e)}")
+        st.info("💡 Pastikan file Excel berada di dalam folder yang benar (seperti folder 'data') dan formatnya sesuai.")
 
 if __name__ == "__main__":
     main()
