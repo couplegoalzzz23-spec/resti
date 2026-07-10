@@ -378,9 +378,9 @@ def main():
     elif menu == "Relative Humidity":
         render_generic_page("💧 Relative Humidity", "rekap_rh_max_min_2021_2025.xlsx", "Relative Humidity", 'line', "Rainbow", "Waktu Pengamatan (UTC)")
     elif menu == "Visibility":
-        render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Rainbow", "Visibility (Meter)")
+        render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Rainbow", "Kategori Vis (Meter)")
     elif menu == "Cloud Base (HS)":
-        render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Rainbow", "HS (Feet)")
+        render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Rainbow", "Kategori HS (Feet)")
     elif menu == "Wind":
         render_wind_page()
 
