@@ -121,7 +121,7 @@ def get_aviation_notes(parameter):
     return notes.get(parameter, "Catatan operasional tidak tersedia.")
 
 def generate_auto_interpretation(df, plot_cols, param_name):
-    st.subheader("💡 Interpretasi Karakter Klimatologi")
+    st.subheader("💡 Interpretasi Karakter Meteorologi")
     st.markdown("Berdasarkan hasil analisis data secara otomatis:")
     
     if len(plot_cols) == 0:
