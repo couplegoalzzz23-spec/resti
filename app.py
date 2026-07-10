@@ -88,7 +88,7 @@ def load_data(filename):
         df = df.drop(columns=['TEMP_DATE'])
         
         # Mengurutkan bulan sesuai kalender (Jan - Des)
-        df['DATE_CAT'] = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
+        df['DATE_CAT'] = pd.Beautiful = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
         df = df.sort_values('DATE_CAT').drop(columns=['DATE_CAT']).reset_index(drop=True)
         
         # Casting ke numeric secara aman (kecuali DATE dan indikator string Arah Angin)
@@ -121,7 +121,7 @@ def get_aviation_notes(parameter):
     return notes.get(parameter, "Catatan operasional tidak tersedia.")
 
 def generate_auto_interpretation(df, plot_cols, param_name):
-    st.subheader("💡 Interpretasi Karakter Meteorologi")
+    st.subheader("💡 Interpretasi Karakter Klimatologi")
     st.markdown("Berdasarkan hasil analisis data secara otomatis:")
     
     if len(plot_cols) == 0:
@@ -149,7 +149,6 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
         
         col_chart, col_metric = st.columns([3, 1])
         
-        # PERBAIKAN WARNA: Membuat palet "Mejikuhibiniu" (Pelangi) yang kontras dan dinamis sesuai jumlah data
         mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(plot_cols)-1) if len(plot_cols)>1 else 1 for i in range(len(plot_cols))])
         
         with col_chart:
@@ -177,7 +176,6 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             )
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.plotly_chart(fig, width="stretch")
 
         with col_metric:
@@ -189,7 +187,6 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
                 labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
             )
             fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.plotly_chart(fig_heat, width="stretch")
             
         st.markdown("---")
@@ -201,11 +198,9 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.dataframe(df, width="stretch", hide_index=True)
             
             csv = df.to_csv(index=False).encode('utf-8')
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name=f"{filename.replace('.xlsx', '')}.csv", mime="text/csv",
                                width="stretch")
@@ -240,7 +235,7 @@ def render_wind_page():
                     r=avg_dir['Frekuensi'],
                     theta=avg_dir['Arah'],
                     marker_color=avg_dir['Frekuensi'],
-                    marker_colorscale='Rainbow', # PERBAIKAN WARNA Mejikuhibiniu
+                    marker_colorscale='Rainbow', 
                     name="Arah Angin (Avg)",
                     showlegend=False
                 ),
@@ -248,7 +243,6 @@ def render_wind_page():
             )
 
         if speed_cols:
-            # PERBAIKAN WARNA: Membuat palet "Mejikuhibiniu" (Pelangi)
             mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
             
             for idx, col in enumerate(speed_cols):
@@ -262,6 +256,7 @@ def render_wind_page():
                     row=1, col=2
                 )
         
+        # PERBAIKAN VISUAL: Memberikan top margin (t=100) agar ruang teks terbebas dari crash
         fig_wind.update_layout(
             barmode='group', 
             polar=dict(
@@ -270,12 +265,18 @@ def render_wind_page():
             ),
             legend_title_text="Kategori Kecepatan",
             height=500,
-            plot_bgcolor="white"
+            plot_bgcolor="white",
+            margin=dict(t=100, b=50, l=50, r=50)
         )
+        
+        # PERBAIKAN VISUAL: Menggeser ketinggian posisi teks judul subplot (ann.y) ke atas secara aman
+        for ann in fig_wind.layout.annotations:
+            ann.y = 1.12
+            ann.font = dict(size=14)
+
         fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', row=1, col=2)
         fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', title_text="Frekuensi", row=1, col=2)
         
-        # PERBAIKAN: use_container_width diganti width="stretch"
         st.plotly_chart(fig_wind, width="stretch")
 
         st.markdown("### 🌡️ Heatmap Profil Angin")
@@ -288,7 +289,6 @@ def render_wind_page():
                 fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Arah", "color": "Frekuensi"})
                 fig_hd.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                # PERBAIKAN: use_container_width diganti width="stretch"
                 st.plotly_chart(fig_hd, width="stretch")
                 
         with col_heat2:
@@ -298,7 +298,6 @@ def render_wind_page():
                 fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Kecepatan (Kts)", "color": "Frekuensi"})
                 fig_hs.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                # PERBAIKAN: use_container_width diganti width="stretch"
                 st.plotly_chart(fig_hs, width="stretch")
             
         st.markdown("---")
@@ -307,10 +306,8 @@ def render_wind_page():
             st.success("✅ **Operational Note:** " + get_aviation_notes('Wind'))
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.dataframe(df, width="stretch", hide_index=True)
             csv = df.to_csv(index=False).encode('utf-8')
-            # PERBAIKAN: use_container_width diganti width="stretch"
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name="rekap_wind_2021_2025.csv", mime="text/csv",
                                width="stretch")
@@ -318,7 +315,7 @@ def render_wind_page():
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
 def render_home():
-    st.title("✈️ Aviation Meteorology Dashboard")
+    st.title("✈️ Aviation Climatology Dashboard")
     st.markdown("---")
     
     col1, col2 = st.columns([2, 1])
@@ -351,7 +348,6 @@ def main():
     st.sidebar.markdown("## 🧭 Navigasi Menu")
     st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
     
-    # PERBAIKAN: Menambahkan label "Navigasi" dan menyembunyikannya (mengatasi error "label got an empty value")
     menu = st.sidebar.radio(
         label="Navigasi Halaman", 
         options=[
