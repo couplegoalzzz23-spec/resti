@@ -4,6 +4,8 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import os
+import urllib.request
+import base64
 
 # ==========================================
 # 1. CONFIGURATION & UI SETUP
@@ -135,17 +137,12 @@ def get_aviation_notes(parameter):
     return notes.get(parameter, "Catatan operasional tidak tersedia.")
 
 def generate_auto_interpretation(df, plot_cols, title, param_key):
-    """
-    Menghasilkan interpretasi meteorologi berdasarkan hukum kausalitas 
-    fisika atmosfer serta regulasi operasional ICAO dan WMO.
-    """
     st.subheader("💡 Interpretasi Kausalitas Operasional (WMO & ICAO)")
     
     if not plot_cols or df.empty:
         st.write("- Tidak cukup data untuk diinterpretasikan secara otomatis.")
         return
 
-    # Ekstraksi Data Dominan untuk Fakta Aktual
     max_val = -float('inf')
     max_col_name = ""
     max_month = ""
@@ -408,17 +405,31 @@ def render_home():
 # ==========================================
 def main():
     try:
-        # PERBAIKAN LOGO TNI AU (SWA BHUWANA PAKSA) - ULTRA HD & ANTI GLITCH
-        st.sidebar.markdown(
-            """
-            <div style="text-align: center; margin-top: -15px; margin-bottom: 15px;">
-                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Logo_of_the_Indonesian_Air_Force.svg/1024px-Logo_of_the_Indonesian_Air_Force.svg.png" 
-                     alt="Logo TNI AU" 
-                     style="width: 75%; max-width: 180px; height: auto; filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.15));">
-            </div>
-            """,
-            unsafe_allow_html=True
-        )
+        # --- PERBAIKAN LOGO TNI AU (BULLETPROOF & BASE64 EMBED) ---
+        # Metode ini dijamin muncul karena gambar diunduh oleh server Python dan disisipkan langsung ke HTML,
+        # menembus blokir CORS / Hotlinking dari browser.
+        logo_url = "https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Logo_of_the_Indonesian_Air_Force.svg/800px-Logo_of_the_Indonesian_Air_Force.svg.png"
+        
+        try:
+            req = urllib.request.Request(logo_url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'})
+            with urllib.request.urlopen(req) as response:
+                img_data = response.read()
+                img_b64 = base64.b64encode(img_data).decode()
+            
+            st.sidebar.markdown(
+                f"""
+                <div style="text-align: center; margin-top: -15px; margin-bottom: 25px;">
+                    <img src="data:image/png;base64,{img_b64}" 
+                         alt="Logo TNI AU" 
+                         style="width: 75%; max-width: 170px; height: auto; filter: drop-shadow(0px 5px 8px rgba(0,0,0,0.25));">
+                </div>
+                """,
+                unsafe_allow_html=True
+            )
+        except Exception:
+            # Fallback jika server sangat terisolasi
+            st.sidebar.image(logo_url, use_container_width=True)
+        # -----------------------------------------------------------
         
         st.sidebar.markdown("## 🧭 Navigasi Menu")
         st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
