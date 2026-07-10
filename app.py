@@ -28,11 +28,14 @@ st.markdown("""
 BAKU_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'Okt', 'Nov', 'Des']
 
 # ==========================================
-# 2. ROBUST DATA LOADER MODULE
+# 2. ROBUST DATA LOADER MODULE (REWRITTEN)
 # ==========================================
 @st.cache_data(show_spinner=False)
 def load_data(filename):
-    """Membaca data secara dinamis, anti-error, dan robust handling."""
+    """
+    Membaca data secara dinamis dengan algoritma Smart Vertical Header Scanner.
+    Kebal terhadap merged cells Excel untuk mencegah hilangnya T MAX, T MIN, dsb.
+    """
     filepath = filename if os.path.exists(filename) else os.path.join("data", filename)
     
     if not os.path.exists(filepath):
@@ -40,38 +43,56 @@ def load_data(filename):
         return None
         
     try:
-        # PERBAIKAN: Menambahkan engine='openpyxl' untuk mencegah Segmentation Fault
         raw_df = pd.read_excel(filepath, header=None, engine='openpyxl')
         
-        # Auto-detect Header Row secara dinamis
-        header_idx = 0
+        # 1. Cari Index Baris Pertama yang Mengandung Data Bulan (Januari)
+        data_start_idx = 0
         for i in range(min(15, len(raw_df))):
             row_vals = [str(x).upper().strip() for x in raw_df.iloc[i].fillna('')]
-            if any(c in row_vals for c in ['DATE', 'BULAN', 'MONTH', 'JAN', 'JANUARI', 'JANUARY']):
-                if 'JAN' in row_vals or 'JANUARI' in row_vals or 'JANUARY' in row_vals:
-                    header_idx = max(0, i - 1)
-                else:
-                    header_idx = i
+            if 'JAN' in row_vals or 'JANUARI' in row_vals or 'JANUARY' in row_vals:
+                data_start_idx = i
                 break
         
-        df = raw_df.iloc[header_idx+1:].copy()
-        df.columns = raw_df.iloc[header_idx].astype(str).str.strip()
+        # Potong dataframe mulai dari baris data
+        df = raw_df.iloc[data_start_idx:].copy().reset_index(drop=True)
         
-        # Bersihkan kolom NaN / Unnamed
-        df = df.loc[:, df.columns.notna()]
-        df = df.loc[:, ~df.columns.str.lower().str.contains('nan|unnamed')]
+        # 2. Ekstrak Header Cerdas (Mencegah Kehilangan T MAX/MIN karena Merged Cells)
+        if data_start_idx > 0:
+            new_cols = []
+            for col_idx in range(len(raw_df.columns)):
+                col_name = ""
+                # Scan vertikal dari baris data ke atas untuk menemukan nama parameter
+                for r in range(data_start_idx - 1, -1, -1):
+                    val = str(raw_df.iloc[r, col_idx]).strip()
+                    if val.lower() not in ['nan', 'none', ''] and not val.lower().startswith('unnamed'):
+                        col_name = val
+                        break
+                
+                # Jika tidak ditemukan nama sama sekali, tandai untuk dibuang
+                if not col_name:
+                    col_name = f"DropMe_{col_idx}"
+                new_cols.append(col_name)
+            df.columns = new_cols
         
-        # Deteksi dan standarisasi kolom tanggal/bulan
+        # 3. Identifikasi Kolom DATE Secara Absolut (Berdasarkan Isi Data, Bukan Header)
         date_col = None
-        for col in df.columns:
-            if str(col).upper() in ['DATE', 'BULAN', 'MONTH']:
-                date_col = col
-                break
+        if not df.empty:
+            for col in df.columns:
+                first_val = str(df[col].iloc[0]).upper().strip()
+                if first_val in ['JAN', 'JANUARI', 'JANUARY']:
+                    date_col = col
+                    break
+        
         if date_col:
             df = df.rename(columns={date_col: 'DATE'})
         else:
             df = df.rename(columns={df.columns[0]: 'DATE'})
 
+        # 4. Buang kolom kosong yang tidak memiliki identitas (DropMe), tapi pertahankan DATE
+        valid_cols = [c for c in df.columns if not str(c).startswith('DropMe_')]
+        df = df[valid_cols]
+
+        # 5. Standarisasi Format dan Urutan Bulan
         valid_months_map = {
             'JAN': 'Jan', 'FEB': 'Feb', 'MAR': 'Mar', 'APR': 'Apr', 'MAY': 'Mei', 'MEI': 'Mei',
             'JUN': 'Jun', 'JUL': 'Jul', 'AUG': 'Agu', 'AGU': 'Agu', 'SEP': 'Sep', 'OCT': 'Okt',
@@ -81,17 +102,14 @@ def load_data(filename):
         df['TEMP_DATE'] = df['DATE'].astype(str).str.upper().str.strip().str[:3]
         df = df[df['TEMP_DATE'].isin(valid_months_map.keys())].copy()
         
-        # Mencegah error duplikasi / blank rows
         df = df.drop_duplicates(subset=['TEMP_DATE'], keep='first')
-        
         df['DATE'] = df['TEMP_DATE'].map(valid_months_map)
         df = df.drop(columns=['TEMP_DATE'])
         
-        # Mengurutkan bulan sesuai kalender (Jan - Des)
-        df['DATE_CAT'] = pd.Beautiful = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
+        df['DATE_CAT'] = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
         df = df.sort_values('DATE_CAT').drop(columns=['DATE_CAT']).reset_index(drop=True)
         
-        # Casting ke numeric secara aman (kecuali DATE dan indikator string Arah Angin)
+        # 6. Casting Data Numerik Secara Aman
         for col in df.columns:
             if col == 'DATE':
                 continue
@@ -256,7 +274,6 @@ def render_wind_page():
                     row=1, col=2
                 )
         
-        # PERBAIKAN VISUAL: Memberikan top margin (t=100) agar ruang teks terbebas dari crash
         fig_wind.update_layout(
             barmode='group', 
             polar=dict(
@@ -269,7 +286,6 @@ def render_wind_page():
             margin=dict(t=100, b=50, l=50, r=50)
         )
         
-        # PERBAIKAN VISUAL: Menggeser ketinggian posisi teks judul subplot (ann.y) ke atas secara aman
         for ann in fig_wind.layout.annotations:
             ann.y = 1.12
             ann.font = dict(size=14)
