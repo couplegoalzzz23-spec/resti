@@ -34,12 +34,20 @@ BAKU_MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep', 'O
 def load_data(filename):
     """
     Membaca data secara dinamis dengan algoritma Smart Vertical Header Scanner.
-    Kebal terhadap merged cells Excel untuk mencegah hilangnya T MAX, T MIN, dsb.
+    Kebal terhadap merged cells Excel dan path deployment.
     """
-    filepath = filename if os.path.exists(filename) else os.path.join("data", filename)
+    # Proteksi Path untuk Deployment (Streamlit Cloud / GitHub)
+    try:
+        base_dir = os.path.dirname(os.path.abspath(__file__))
+    except NameError:
+        base_dir = os.getcwd()
+        
+    filepath = os.path.join(base_dir, "data", filename)
+    if not os.path.exists(filepath):
+        filepath = os.path.join(base_dir, filename) # Fallback ke root direktori
     
     if not os.path.exists(filepath):
-        st.error(f"🚨 File tidak ditemukan: `{filename}`. Pastikan nama file sesuai di repositori.")
+        st.error(f"🚨 File tidak ditemukan: `{filename}`. Pastikan file ada di repositori GitHub/direktori kerja.")
         return None
         
     try:
@@ -105,14 +113,14 @@ def load_data(filename):
         df['DATE_CAT'] = pd.Categorical(df['DATE'], categories=BAKU_MONTHS, ordered=True)
         df = df.sort_values('DATE_CAT').drop(columns=['DATE_CAT']).reset_index(drop=True)
         
-        # 6. Casting Data Numerik Secara Aman
+        # 6. Casting Data Numerik Secara Aman (Mencegah Crash Plotly)
         for col in df.columns:
             if col == 'DATE':
                 continue
             elif str(col).upper() == 'DIRECTION':
                 df[col] = df[col].astype(str) 
             else:
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
             
         return df
         
@@ -145,17 +153,21 @@ def generate_auto_interpretation(df, plot_cols, title, param_key):
     max_col_name = ""
     max_month = ""
     
+    # Proteksi tipe data untuk perhitungan max agar tidak crash
     for col in plot_cols:
-        col_max = df[col].max()
-        if col_max > max_val:
-            max_val = col_max
-            max_col_name = col
-            max_months_series = df.loc[df[col] == col_max, 'DATE'].values
-            if len(max_months_series) > 0:
-                max_month = max_months_series[0]
+        try:
+            col_max = pd.to_numeric(df[col], errors='coerce').max()
+            if pd.notna(col_max) and col_max > max_val:
+                max_val = col_max
+                max_col_name = col
+                max_months_series = df.loc[df[col] == col_max, 'DATE'].values
+                if len(max_months_series) > 0:
+                    max_month = max_months_series[0]
+        except Exception:
+            continue
 
-    if max_val > 0:
-        st.markdown(f"**Fakta Analitik:** Kejadian atau frekuensi dominan tercatat pada profil **{max_col_name}** di bulan **{max_month}** (Nilai: {max_val}).")
+    if max_val > -float('inf') and max_col_name:
+        st.markdown(f"**Fakta Analitik:** Kejadian atau frekuensi dominan berdasarkan data tercatat pada profil **{max_col_name}** di bulan **{max_month}** (Nilai tertinggi: {max_val}).")
     
     st.markdown("**Analisis Sebab-Akibat Meteorologis & Dampak Penerbangan:**")
     
@@ -163,31 +175,31 @@ def generate_auto_interpretation(df, plot_cols, title, param_key):
         st.markdown("""
         * **Sebab (Fisika Atmosfer):** Pemanasan permukaan radiatif yang intensif meningkatkan suhu lingkungan melebihi kondisi atmosfer standar (ISA).
         * **Akibat (Kondisi Udara):** Kerapatan udara (*air density*) di sekitar pangkalan udara menurun secara drastis, memicu lonjakan eksponensial pada *Density Altitude* (WMO No. 732).
-        * **Dampak Operasional:** Kurangnya massa molekul udara mengurangi gaya angkat (*lift*) sayap pesawat dan dorongan mesin. Sesuai ICAO Doc 8168, kondisi ini krusial bagi pesawat kargo atau militer karena menuntut jarak *take-off roll* yang jauh lebih panjang, dan berpotensi memaksa pembatasan *Maximum Take-off Weight* (MTOW) demi menjaga jarak aman rintangan (*obstacle clearance*).
+        * **Dampak Operasional:** Kurangnya massa molekul udara mengurangi gaya angkat (*lift*) sayap pesawat dan dorongan mesin. Sesuai ICAO Doc 8168, kondisi ini menuntut jarak *take-off roll* yang jauh lebih panjang, dan membatasi *Maximum Take-off Weight* (MTOW).
         """)
     elif param_key == "Relative Humidity":
         st.markdown("""
-        * **Sebab (Fisika Atmosfer):** Akumulasi uap air masif (RH > 90%) yang diikuti oleh fase pendinginan nokturnal atau datangnya massa udara dingin dari pergerakan awan konvektif.
-        * **Akibat (Kondisi Udara):** Temperatur lingkungan anjlok hingga menyentuh titik embun (*dew point temperature*). Proses ini melepaskan panas laten kondensasi dan mengubah uap air menjadi titik-titik air tersuspensi di lapisan batas atmosfer (WMO No. 731).
-        * **Dampak Operasional:** Perubahan fasa ini menghasilkan fenomena *mist*, *fog*, atau fraksi awan rendah yang secara instan mendegradasi jarak pandang visual pilot, berpotensi menunda peluncuran operasi terbang visual (VFR).
+        * **Sebab (Fisika Atmosfer):** Akumulasi uap air masif (RH > 90%) yang diikuti oleh fase pendinginan nokturnal atau datangnya massa udara dingin.
+        * **Akibat (Kondisi Udara):** Temperatur lingkungan anjlok hingga menyentuh titik embun (*dew point temperature*). Proses ini melepaskan panas laten kondensasi (WMO No. 731).
+        * **Dampak Operasional:** Perubahan fasa ini menghasilkan fenomena *mist*, *fog*, atau fraksi awan rendah yang secara instan mendegradasi jarak pandang visual pilot, berpotensi menunda operasi terbang visual (VFR).
         """)
     elif param_key == "Visibility":
         st.markdown("""
-        * **Sebab (Fisika Atmosfer):** Konsentrasi partikel penghalang pandangan—seperti kabut, presipitasi curah hujan intens (contohnya dari sel badai/MCS), atau aerosol—di sepanjang jalur penerbangan.
+        * **Sebab (Fisika Atmosfer):** Konsentrasi partikel penghalang pandangan—seperti kabut, curah hujan intens, atau aerosol—di sepanjang jalur penerbangan.
         * **Akibat (Kondisi Udara):** Terjadinya peredaman (atenuasi) optik berupa hamburan dan penyerapan cahaya di lapisan udara permukaan.
-        * **Dampak Operasional:** Penurunan jarak pandang horizontal mengancam fase kritis pendaratan. Merujuk ICAO Annex 3, ketika visibilitas turun di bawah ambang batas minimum fasilitas bandara, prosedur pendekatan instrumen presisi atau *Low Visibility Procedures* (LVP) harus diaktifkan untuk mencegah *Controlled Flight Into Terrain* (CFIT).
+        * **Dampak Operasional:** Penurunan jarak pandang horizontal mengancam pendaratan. Merujuk ICAO Annex 3, *Low Visibility Procedures* (LVP) harus diaktifkan untuk mencegah *Controlled Flight Into Terrain* (CFIT).
         """)
     elif param_key == "Cloud Base":
         st.markdown("""
-        * **Sebab (Fisika Atmosfer):** Ketidakstabilan atmosfer taktis yang memicu aliran updraft kuat, mengangkut uap air ke atas hingga melewati *Lifting Condensation Level* (LCL) dan membentuk awan konvektif dengan dasar yang rendah.
-        * **Akibat (Kondisi Udara):** Lapisan dasar awan (*cloud ceiling*) menutupi area aerodrome, memblokir kontak visual vertikal dan oblik dari ruang udara di atasnya (WMO No. 732).
-        * **Dampak Operasional:** *Ceiling* di bawah batas minimum *Decision Altitude/Height* (DA/H) membuat pilot kehilangan referensi visual terhadap landasan pacu. Menurut ICAO Doc 9365, ketiadaan landasan pada ketinggian ini memaksa pilot mengeksekusi *missed approach* atau pengalihan (*divert*) pendaratan demi keselamatan.
+        * **Sebab (Fisika Atmosfer):** Ketidakstabilan atmosfer taktis yang memicu aliran updraft kuat, mengangkut uap air ke atas hingga melewati *Lifting Condensation Level* (LCL).
+        * **Akibat (Kondisi Udara):** Lapisan dasar awan (*cloud ceiling*) menutupi area aerodrome, memblokir kontak visual vertikal dan oblik (WMO No. 732).
+        * **Dampak Operasional:** *Ceiling* di bawah batas minimum *Decision Altitude/Height* (DA/H) membuat pilot kehilangan referensi visual darat, memaksa eksekusi *missed approach* atau pengalihan (*divert*).
         """)
     elif param_key == "Wind":
         st.markdown("""
-        * **Sebab (Fisika Atmosfer):** Perbedaan tekanan lokal yang ekstrem atau *downdraft/outflow* beringas dari sistem cuaca skala meso (seperti *squall lines*) di sekitar wilayah pangkalan.
-        * **Akibat (Kondisi Udara):** Fluktuasi vektor angin yang radikal. Ini menciptakan angin permukaan yang sangat kencang, pergeseran arah tiba-tiba (*windshear*), atau *crosswind* yang tajam memotong garis landasan.
-        * **Dampak Operasional:** Angin lintang yang dominan dan agresif melampaui batasan struktural komponen ekor vertikal pesawat, memicu masalah stabilitas yaw. ICAO Annex 14 mewajibkan data arah angin (*windrose*) sebagai parameter primer bagi ATC untuk menetapkan *runway-in-use* dan menjamin pendaratan *headwind* yang aman.
+        * **Sebab (Fisika Atmosfer):** Perbedaan tekanan lokal ekstrem atau *downdraft/outflow* beringas dari sistem cuaca skala meso di sekitar wilayah bandara.
+        * **Akibat (Kondisi Udara):** Fluktuasi vektor angin yang radikal menciptakan angin kencang, pergeseran arah (*windshear*), atau *crosswind* yang tajam.
+        * **Dampak Operasional:** Angin lintang agresif memicu masalah stabilitas yaw. ICAO Annex 14 mewajibkan data arah angin (*windrose*) sebagai parameter primer bagi ATC untuk menetapkan *runway-in-use* pendaratan yang aman.
         """)
     else:
         st.markdown("* Interpretasi otomatis untuk sistem operasional standar belum terdefinisi.*")
@@ -204,47 +216,54 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
     if df is not None and not df.empty:
         plot_cols = [c for c in df.columns if str(c).upper() not in ['DATE', 'DIRECTION']]
         
+        if not plot_cols:
+            st.warning("⚠️ Kolom numerik untuk divisualisasikan tidak ditemukan pada data.")
+            return
+
         col_chart, col_metric = st.columns([3, 1])
-        
         mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(plot_cols)-1) if len(plot_cols)>1 else 1 for i in range(len(plot_cols))])
         
-        with col_chart:
-            st.markdown("### 📈 Interactive Meteogram")
-            if chart_type == 'bar':
-                fig = px.bar(
-                    df, x='DATE', y=plot_cols, barmode='group', 
-                    color_discrete_sequence=mejiku_colors,
-                    labels={"variable": legend_title, "value": "Nilai / Frekuensi", "DATE": "Bulan"}
+        try:
+            with col_chart:
+                st.markdown("### 📈 Interactive Meteogram")
+                if chart_type == 'bar':
+                    fig = px.bar(
+                        df, x='DATE', y=plot_cols, barmode='group', 
+                        color_discrete_sequence=mejiku_colors,
+                        labels={"variable": legend_title, "value": "Nilai / Frekuensi", "DATE": "Bulan"}
+                    )
+                else: 
+                    fig = go.Figure()
+                    for idx, col in enumerate(plot_cols):
+                        fig.add_trace(go.Scatter(
+                            x=df['DATE'], y=df[col], mode='lines+markers', 
+                            name=str(col), line=dict(width=3, color=mejiku_colors[idx % len(mejiku_colors)])
+                        ))
+                
+                fig.update_layout(
+                    xaxis_title="Bulan", 
+                    yaxis_title="Frekuensi / Nilai", 
+                    plot_bgcolor="white", 
+                    hovermode="x unified",
+                    legend_title_text=legend_title
                 )
-            else: 
-                fig = go.Figure()
-                for idx, col in enumerate(plot_cols):
-                    fig.add_trace(go.Scatter(
-                        x=df['DATE'], y=df[col], mode='lines+markers', 
-                        name=str(col), line=dict(width=3, color=mejiku_colors[idx % len(mejiku_colors)])
-                    ))
-            
-            fig.update_layout(
-                xaxis_title="Bulan", 
-                yaxis_title="Frekuensi / Nilai", 
-                plot_bgcolor="white", 
-                hovermode="x unified",
-                legend_title_text=legend_title
-            )
-            fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            st.plotly_chart(fig, width="stretch")
+                fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
+                fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
+                st.plotly_chart(fig, width="stretch", use_container_width=True)
 
-        with col_metric:
-            st.markdown("### 🌡️ Heatmap Profil")
-            df_heat = df.set_index('DATE')[plot_cols].T
-            fig_heat = px.imshow(
-                df_heat, text_auto=".1f", aspect="auto", 
-                color_continuous_scale="Rainbow",
-                labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
-            )
-            fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig_heat, width="stretch")
+            with col_metric:
+                st.markdown("### 🌡️ Heatmap Profil")
+                df_heat = df.set_index('DATE')[plot_cols].T
+                fig_heat = px.imshow(
+                    df_heat, text_auto=".1f", aspect="auto", 
+                    color_continuous_scale="Rainbow",
+                    labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
+                )
+                fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
+                st.plotly_chart(fig_heat, width="stretch", use_container_width=True)
+                
+        except Exception as e:
+            st.error(f"🚨 Gagal merender grafik: {str(e)}. Pastikan isi data Excel adalah angka yang valid.")
             
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
@@ -255,14 +274,14 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name=f"{filename.replace('.xlsx', '')}.csv", mime="text/csv",
-                               width="stretch")
+                               use_container_width=True)
     else:
-        st.warning("⚠️ Data kosong atau gagal diolah. Pastikan file tersedia.")
+        st.warning("⚠️ Data kosong atau gagal diolah. Pastikan file Excel berisi data yang tepat.")
 
 def render_wind_page():
     st.title("🌬️ Wind Analysis (Arah & Kecepatan)")
@@ -276,63 +295,67 @@ def render_wind_page():
         
         st.markdown("### 📈 Unified Interactive Windrose & Speed Distribution")
         
-        fig_wind = make_subplots(
-            rows=1, cols=2, 
-            specs=[[{'type': 'polar'}, {'type': 'xy'}]],
-            subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
-            horizontal_spacing=0.15
-        )
-
-        if dir_cols:
-            avg_dir = df[dir_cols].mean().reset_index()
-            avg_dir.columns = ['Arah', 'Frekuensi']
-            
-            fig_wind.add_trace(
-                go.Barpolar(
-                    r=avg_dir['Frekuensi'],
-                    theta=avg_dir['Arah'],
-                    marker_color=avg_dir['Frekuensi'],
-                    marker_colorscale='Rainbow', 
-                    name="Arah Angin (Avg)",
-                    showlegend=False
-                ),
-                row=1, col=1
+        try:
+            fig_wind = make_subplots(
+                rows=1, cols=2, 
+                specs=[[{'type': 'polar'}, {'type': 'xy'}]],
+                subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
+                horizontal_spacing=0.15
             )
 
-        if speed_cols:
-            mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
-            
-            for idx, col in enumerate(speed_cols):
+            if dir_cols:
+                avg_dir = df[dir_cols].mean().reset_index()
+                avg_dir.columns = ['Arah', 'Frekuensi']
+                
                 fig_wind.add_trace(
-                    go.Bar(
-                        x=df['DATE'], 
-                        y=df[col], 
-                        name=f"{col} Kts",
-                        marker_color=mejiku_colors[idx]
+                    go.Barpolar(
+                        r=avg_dir['Frekuensi'],
+                        theta=avg_dir['Arah'],
+                        marker_color=avg_dir['Frekuensi'],
+                        marker_colorscale='Rainbow', 
+                        name="Arah Angin (Avg)",
+                        showlegend=False
                     ),
-                    row=1, col=2
+                    row=1, col=1
                 )
-        
-        fig_wind.update_layout(
-            barmode='group', 
-            polar=dict(
-                radialaxis=dict(visible=True, showticklabels=True),
-                angularaxis=dict(direction="clockwise")
-            ),
-            legend_title_text="Kategori Kecepatan",
-            height=500,
-            plot_bgcolor="white",
-            margin=dict(t=100, b=50, l=50, r=50)
-        )
-        
-        for ann in fig_wind.layout.annotations:
-            ann.y = 1.12
-            ann.font = dict(size=14)
 
-        fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', row=1, col=2)
-        fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', title_text="Frekuensi", row=1, col=2)
-        
-        st.plotly_chart(fig_wind, width="stretch")
+            if speed_cols:
+                mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
+                
+                for idx, col in enumerate(speed_cols):
+                    fig_wind.add_trace(
+                        go.Bar(
+                            x=df['DATE'], 
+                            y=df[col], 
+                            name=f"{col} Kts",
+                            marker_color=mejiku_colors[idx]
+                        ),
+                        row=1, col=2
+                    )
+            
+            fig_wind.update_layout(
+                barmode='group', 
+                polar=dict(
+                    radialaxis=dict(visible=True, showticklabels=True),
+                    angularaxis=dict(direction="clockwise")
+                ),
+                legend_title_text="Kategori Kecepatan",
+                height=500,
+                plot_bgcolor="white",
+                margin=dict(t=100, b=50, l=50, r=50)
+            )
+            
+            for ann in fig_wind.layout.annotations:
+                ann.y = 1.12
+                ann.font = dict(size=14)
+
+            fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', row=1, col=2)
+            fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', title_text="Frekuensi", row=1, col=2)
+            
+            st.plotly_chart(fig_wind, width="stretch", use_container_width=True)
+            
+        except Exception as e:
+            st.error(f"🚨 Gagal merender grafik angin: {str(e)}.")
 
         st.markdown("### 🌡️ Heatmap Profil Angin")
         col_heat1, col_heat2 = st.columns(2)
@@ -344,7 +367,7 @@ def render_wind_page():
                 fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Arah", "color": "Frekuensi"})
                 fig_hd.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                st.plotly_chart(fig_hd, width="stretch")
+                st.plotly_chart(fig_hd, width="stretch", use_container_width=True)
                 
         with col_heat2:
             if speed_cols:
@@ -353,7 +376,7 @@ def render_wind_page():
                 fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Kecepatan (Kts)", "color": "Frekuensi"})
                 fig_hs.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                st.plotly_chart(fig_hs, width="stretch")
+                st.plotly_chart(fig_hs, width="stretch", use_container_width=True)
             
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
@@ -364,11 +387,11 @@ def render_wind_page():
             
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            st.dataframe(df, width="stretch", hide_index=True)
+            st.dataframe(df, use_container_width=True, hide_index=True)
             csv = df.to_csv(index=False).encode('utf-8')
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name="rekap_wind_2021_2025.csv", mime="text/csv",
-                               width="stretch")
+                               use_container_width=True)
     else:
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
