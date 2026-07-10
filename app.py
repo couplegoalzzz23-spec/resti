@@ -410,7 +410,13 @@ def render_home():
 # ==========================================
 def main():
     try:
-        st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=80)
+        # --- TAMPILAN LOGO ESTETIK ---
+        col_logo1, col_logo2 = st.sidebar.columns(2)
+        with col_logo1:
+            st.image("https://upload.wikimedia.org/wikipedia/commons/5/52/Logo_TNI_AU.png", width=80)
+        with col_logo2:
+            st.image("https://upload.wikimedia.org/wikipedia/commons/8/8e/Logo_BMKG.png", width=80)
+            
         st.sidebar.markdown("## 🧭 Navigasi Menu")
         st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
         
