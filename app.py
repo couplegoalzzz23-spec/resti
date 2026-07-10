@@ -155,7 +155,6 @@ def generate_auto_interpretation(df, plot_cols, title, param_key):
         if col_max > max_val:
             max_val = col_max
             max_col_name = col
-            # Ambil bulan tempat nilai max terjadi (jika ada lebih dari 1, ambil yang pertama)
             max_months_series = df.loc[df[col] == col_max, 'DATE'].values
             if len(max_months_series) > 0:
                 max_month = max_months_series[0]
@@ -165,7 +164,6 @@ def generate_auto_interpretation(df, plot_cols, title, param_key):
     
     st.markdown("**Analisis Sebab-Akibat Meteorologis & Dampak Penerbangan:**")
     
-    # Kausalitas Spesifik Parameter
     if param_key in ["Temperature Freq", "Temperature Mean"]:
         st.markdown("""
         * **Sebab (Fisika Atmosfer):** Pemanasan permukaan radiatif yang intensif meningkatkan suhu lingkungan melebihi kondisi atmosfer standar (ISA).
@@ -410,8 +408,17 @@ def render_home():
 # ==========================================
 def main():
     try:
-        # PENGGANTIAN LOGO TNI AU (SWA BHUWANA PAKSA)
-        st.sidebar.image("https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Logo_of_the_Indonesian_Air_Force.svg/800px-Logo_of_the_Indonesian_Air_Force.svg.png", use_container_width=True)
+        # PERBAIKAN LOGO TNI AU (SWA BHUWANA PAKSA) - ULTRA HD & ANTI GLITCH
+        st.sidebar.markdown(
+            """
+            <div style="text-align: center; margin-top: -15px; margin-bottom: 15px;">
+                <img src="https://upload.wikimedia.org/wikipedia/commons/thumb/e/e5/Logo_of_the_Indonesian_Air_Force.svg/1024px-Logo_of_the_Indonesian_Air_Force.svg.png" 
+                     alt="Logo TNI AU" 
+                     style="width: 75%; max-width: 180px; height: auto; filter: drop-shadow(0px 4px 8px rgba(0,0,0,0.15));">
+            </div>
+            """,
+            unsafe_allow_html=True
+        )
         
         st.sidebar.markdown("## 🧭 Navigasi Menu")
         st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
