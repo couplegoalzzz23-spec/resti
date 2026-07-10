@@ -125,7 +125,7 @@ def load_data(filename):
         return None
 
 # ==========================================
-# 3. AVIATION NOTES MODULE
+# 3. AVIATION NOTES & INTEPRETATION MODULE
 # ==========================================
 def get_aviation_notes(parameter):
     notes = {
@@ -138,20 +138,49 @@ def get_aviation_notes(parameter):
     }
     return notes.get(parameter, "Catatan operasional tidak tersedia.")
 
-def generate_auto_interpretation(df, plot_cols, param_name):
+def generate_auto_interpretation(df, plot_cols, param_title):
     st.subheader("💡 Interpretasi Karakter Meteorologi")
-    st.markdown("Berdasarkan hasil analisis data secara otomatis:")
     
     if len(plot_cols) == 0:
-        st.write("- Tidak cukup data untuk diinterpretasikan.")
+        st.write("- Tidak cukup data numerik untuk dianalisis.")
         return
 
-    for col in plot_cols[:3]: 
+    # A. Logika Hukum Sebab-Akibat (ICAO & WMO Standard)
+    title_lower = param_title.lower()
+    if "temperature" in title_lower:
+        cause_effect = "Suhu udara berbanding terbalik dengan densitas udara. Suhu yang tinggi menyebabkan *High Density Altitude*. Akibatnya, gaya angkat (lift) pesawat melemah, menuntut landasan pacu (*take-off roll*) yang lebih panjang, dan memaksa pengurangan beban operasional (MTOW) demi keselamatan penerbangan."
+        reference = "ICAO Annex 3 & Doc 8896"
+    elif "humidity" in title_lower or "rh" in title_lower:
+        cause_effect = "Kelembapan (RH) mendekati 100% menandakan massa udara nyaris jenuh. Jika terjadi pendinginan nokturnal, uap air akan terkondensasi secara masif membentuk kabut (*fog*) atau stratus rendah. Hal ini berisiko anjloknya jarak pandang visual secara tiba-tiba di aerodrome."
+        reference = "WMO No. 8"
+    elif "visibility" in title_lower:
+        cause_effect = "Jarak pandang di bawah ambang batas minimum secara otomatis membatalkan aturan penerbangan visual (VFR) menjadi instrumen (IFR). Kondisi ini memicu aktivasi *Low Visibility Procedures* (LVP), yang memperbesar potensi *missed approach* atau *divert* ke bandara alternatif."
+        reference = "ICAO Annex 3"
+    elif "cloud" in title_lower or "ceiling" in title_lower or "hs" in title_lower:
+        cause_effect = "Dasar awan (Ceiling) yang rendah akan menutupi referensi visual terhadap landasan. Jika pada fase akhir pendaratan pesawat telah mencapai *Decision Height* (DH) namun landasan tidak terlihat, prosedur pendaratan wajib dibatalkan (*go-around*)."
+        reference = "ICAO Annex 3"
+    elif "wind" in title_lower:
+        cause_effect = "Karakteristik angin adalah penentu utama *runway-in-use*. Komponen *crosswind* atau *tailwind* yang melebihi batas rancang bangun pesawat dapat memicu turbulensi mekanis dan *windshear*, yang membahayakan stabilitas vertikal dan horizontal saat *final approach*."
+        reference = "ICAO Annex 3 & Doc 9817"
+    else:
+        cause_effect = "Fluktuasi anomali cuaca berdampak langsung terhadap efisiensi profil penerbangan, menuntut mitigasi operasional dan taktis yang presisi."
+        reference = "ICAO Guidelines"
+
+    st.markdown(f"**Landasan Regulasi ({reference}):**")
+    st.info(cause_effect)
+
+    # B. Analisis Data Peak Season
+    st.markdown("**Analisis Puncak Kejadian (*Peak Season*):**")
+    
+    # Filter hanya kolom numerik untuk menghindari error operasi max()
+    valid_cols = [c for c in plot_cols if pd.api.types.is_numeric_dtype(df[c])]
+    
+    for col in valid_cols[:4]: # Batasi pada 4 parameter teratas agar rapi
         max_val = df[col].max()
         if max_val > 0:
-            max_month_series = df.loc[df[col] == max_val, 'DATE'].values
-            max_month = max_month_series[0] if len(max_month_series) > 0 else "N/A"
-            st.write(f"- Peluang frekuensi/intensitas tertinggi untuk kondisi **{col}** terjadi pada bulan **{max_month}** (Nilai tertinggi: {max_val}).")
+            max_months = df.loc[df[col] == max_val, 'DATE'].tolist()
+            months_str = ", ".join(max_months)
+            st.markdown(f"- Parameter **{col}**: Frekuensi/Intensitas tertinggi terkonsentrasi pada bulan **{months_str}** (Nilai: **{max_val:g}**). *Kewaspadaan ekstra untuk mitigasi operasional direkomendasikan pada periode ini.*")
 
 # ==========================================
 # 4. DASHBOARD PAGES & VISUALIZATIONS
@@ -211,8 +240,10 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
         col_insight, col_data = st.columns([1, 1])
         
         with col_insight:
+            # Fungsi otomatis membaca context dari Title Halaman
             generate_auto_interpretation(df, plot_cols, title)
-            st.success("✅ **Operational Note:** " + get_aviation_notes(param_key))
+            st.write("")
+            st.success("✅ **Operational Note Khusus:** " + get_aviation_notes(param_key))
             
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
@@ -319,7 +350,11 @@ def render_wind_page():
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
         with col_insight:
-            st.success("✅ **Operational Note:** " + get_aviation_notes('Wind'))
+            # Ditambahkan di sini agar integrasi interpretasi otomatis juga berlaku untuk laman angin
+            if speed_cols:
+                generate_auto_interpretation(df, speed_cols, 'Wind')
+                st.write("")
+            st.success("✅ **Operational Note Khusus:** " + get_aviation_notes('Wind'))
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
             st.dataframe(df, width="stretch", hide_index=True)
@@ -346,7 +381,7 @@ def render_home():
         Fokus analisis:
         * Frekuensi & Probabilitas Kejadian
         * Distribusi Musiman
-        * Interpretasi Meteorologis Otomatis
+        * Interpretasi Meteorologis Otomatis Berbasis WMO/ICAO
         * Implikasi Operasional Penerbangan
         """)
     with col2:
