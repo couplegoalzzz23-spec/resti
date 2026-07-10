@@ -40,7 +40,8 @@ def load_data(filename):
         return None
         
     try:
-        raw_df = pd.read_excel(filepath, header=None)
+        # PERBAIKAN: Menambahkan engine='openpyxl' untuk mencegah Segmentation Fault
+        raw_df = pd.read_excel(filepath, header=None, engine='openpyxl')
         
         # Auto-detect Header Row secara dinamis
         header_idx = 0
@@ -148,13 +149,11 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
         
         col_chart, col_metric = st.columns([3, 1])
         
-        # Anti-crash visuals: Fallback ke Blues jika warna tidak ditemukan
         safe_colorscale = getattr(px.colors.sequential, colorscale, px.colors.sequential.Blues)
         
         with col_chart:
             st.markdown("### 📈 Interactive Meteogram")
             if chart_type == 'bar':
-                # FIX: Mengubah 'stack' menjadi 'group' agar variasi histogram sumbu-y terlihat dan tidak terlihat datar/sama semua
                 fig = px.bar(
                     df, x='DATE', y=plot_cols, barmode='group', 
                     color_discrete_sequence=safe_colorscale,
@@ -169,7 +168,6 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
                         name=str(col), line=dict(width=3, color=safe_qualitative[idx % len(safe_qualitative)])
                     ))
             
-            # Custom Legend 
             fig.update_layout(
                 xaxis_title="Bulan", 
                 yaxis_title="Frekuensi / Nilai", 
@@ -179,7 +177,8 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             )
             fig.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
             fig.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8')
-            st.plotly_chart(fig, use_container_width=True)
+            # PERBAIKAN: use_container_width diganti width="stretch"
+            st.plotly_chart(fig, width="stretch")
 
         with col_metric:
             st.markdown("### 🌡️ Heatmap Profil")
@@ -190,7 +189,8 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
                 labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
             )
             fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
-            st.plotly_chart(fig_heat, use_container_width=True)
+            # PERBAIKAN: use_container_width diganti width="stretch"
+            st.plotly_chart(fig_heat, width="stretch")
             
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
@@ -201,12 +201,14 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            # PERBAIKAN: use_container_width diganti width="stretch"
+            st.dataframe(df, width="stretch", hide_index=True)
             
             csv = df.to_csv(index=False).encode('utf-8')
+            # PERBAIKAN: use_container_width diganti width="stretch"
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name=f"{filename.replace('.xlsx', '')}.csv", mime="text/csv",
-                               use_container_width=True)
+                               width="stretch")
     else:
         st.warning("⚠️ Data kosong atau gagal diolah.")
 
@@ -217,23 +219,18 @@ def render_wind_page():
     
     df = load_data("rekap_wind_2021_2025.xlsx")
     if df is not None and not df.empty:
-        # Klasifikasi Kolom Otomatis: Arah (XXX-XXX-XXX format) vs Kecepatan
         dir_cols = [c for c in df.columns if '-' in str(c) and len(str(c).split('-')) == 3]
         speed_cols = [c for c in df.columns if c not in dir_cols and str(c).upper() not in ['DATE', 'CALM', 'DIRECTION']]
         
         st.markdown("### 📈 Unified Interactive Windrose & Speed Distribution")
         
-        # FIX WINDROSE: Menggunakan make_subplots untuk menggabungkan Polar Chart (Arah) dan Bar Chart (Kecepatan)
         fig_wind = make_subplots(
             rows=1, cols=2, 
             specs=[[{'type': 'polar'}, {'type': 'xy'}]],
-            
             subplot_titles=("Windrose (Distribusi Arah)", "Distribusi Kecepatan Angin (Bulan)"),
-            
             horizontal_spacing=0.15
         )
 
-        # Plot Arah Angin (Windrose Polar)
         if dir_cols:
             avg_dir = df[dir_cols].mean().reset_index()
             avg_dir.columns = ['Arah', 'Frekuensi']
@@ -243,17 +240,15 @@ def render_wind_page():
                     r=avg_dir['Frekuensi'],
                     theta=avg_dir['Arah'],
                     marker_color=avg_dir['Frekuensi'],
-                    marker_colorscale='Turbo', # Gradasi kontras tinggi sesuai permintaan
+                    marker_colorscale='Turbo', 
                     name="Arah Angin (Avg)",
                     showlegend=False
                 ),
                 row=1, col=1
             )
 
-        # Plot Kecepatan Angin (Bar Chart)
         if speed_cols:
             safe_colorscale = getattr(px.colors.sequential, "Turbo", px.colors.sequential.Viridis)
-            # Sample warna berdasar jumlah kategori kecepatan agar kontras
             colors = px.colors.sample_colorscale(safe_colorscale, [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
             
             for idx, col in enumerate(speed_cols):
@@ -268,7 +263,7 @@ def render_wind_page():
                 )
         
         fig_wind.update_layout(
-            barmode='group', # Grouped untuk kecepatan agar mudah dibaca frekuensinya
+            barmode='group', 
             polar=dict(
                 radialaxis=dict(visible=True, showticklabels=True),
                 angularaxis=dict(direction="clockwise")
@@ -280,9 +275,9 @@ def render_wind_page():
         fig_wind.update_xaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', row=1, col=2)
         fig_wind.update_yaxes(showgrid=True, gridwidth=1, gridcolor='#E8E8E8', title_text="Frekuensi", row=1, col=2)
         
-        st.plotly_chart(fig_wind, use_container_width=True)
+        # PERBAIKAN: use_container_width diganti width="stretch"
+        st.plotly_chart(fig_wind, width="stretch")
 
-        # Heatmap Terpisah untuk Wind
         st.markdown("### 🌡️ Heatmap Profil Angin")
         col_heat1, col_heat2 = st.columns(2)
         
@@ -293,7 +288,8 @@ def render_wind_page():
                 fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
                                    labels={"x": "Bulan", "y": "Arah", "color": "Frekuensi"})
                 fig_hd.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                st.plotly_chart(fig_hd, use_container_width=True)
+                # PERBAIKAN: use_container_width diganti width="stretch"
+                st.plotly_chart(fig_hd, width="stretch")
                 
         with col_heat2:
             if speed_cols:
@@ -302,7 +298,8 @@ def render_wind_page():
                 fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
                                    labels={"x": "Bulan", "y": "Kecepatan (Kts)", "color": "Frekuensi"})
                 fig_hs.update_layout(margin=dict(l=0, r=0, t=0, b=0))
-                st.plotly_chart(fig_hs, use_container_width=True)
+                # PERBAIKAN: use_container_width diganti width="stretch"
+                st.plotly_chart(fig_hs, width="stretch")
             
         st.markdown("---")
         col_insight, col_data = st.columns([1, 1])
@@ -310,11 +307,13 @@ def render_wind_page():
             st.success("✅ **Operational Note:** " + get_aviation_notes('Wind'))
         with col_data:
             st.markdown("### 🗃️ Original Data Table")
-            st.dataframe(df, use_container_width=True, hide_index=True)
+            # PERBAIKAN: use_container_width diganti width="stretch"
+            st.dataframe(df, width="stretch", hide_index=True)
             csv = df.to_csv(index=False).encode('utf-8')
+            # PERBAIKAN: use_container_width diganti width="stretch"
             st.download_button(label="⬇️ Download CSV", data=csv, 
                                file_name="rekap_wind_2021_2025.csv", mime="text/csv",
-                               use_container_width=True)
+                               width="stretch")
     else:
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
@@ -352,20 +351,24 @@ def main():
     st.sidebar.markdown("## 🧭 Navigasi Menu")
     st.sidebar.caption("Data Rata-Rata: 2021 - 2025")
     
-    menu = st.sidebar.radio("", [
-        "Home", 
-        "Temperature Frequency", 
-        "Temperature Mean Max Min", 
-        "Relative Humidity", 
-        "Visibility", 
-        "Cloud Base (HS)", 
-        "Wind"
-    ])
+    # PERBAIKAN: Menambahkan label "Navigasi" dan menyembunyikannya (mengatasi error "label got an empty value")
+    menu = st.sidebar.radio(
+        label="Navigasi Halaman", 
+        options=[
+            "Home", 
+            "Temperature Frequency", 
+            "Temperature Mean Max Min", 
+            "Relative Humidity", 
+            "Visibility", 
+            "Cloud Base (HS)", 
+            "Wind"
+        ],
+        label_visibility="collapsed"
+    )
     
     st.sidebar.markdown("---")
     st.sidebar.caption("Aviation Climatology Dashboard © 2026")
 
-    # Routing berdasarkan menu yang dipilih
     if menu == "Home":
         render_home()
     elif menu == "Temperature Frequency":
