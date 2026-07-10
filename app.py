@@ -269,7 +269,7 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
                                file_name=f"{filename.replace('.xlsx', '')}.csv", mime="text/csv",
                                width="stretch")
     else:
-        st.warning("⚠️ Data kosong atau gagal diolah.")
+        st.warning("⚠️ Data kosong atau gagal diolah. Pastikan file tersedia.")
 
 def render_wind_page():
     st.title("🌬️ Wind Analysis (Arah & Kecepatan)")
@@ -448,7 +448,7 @@ def main():
             
     except Exception as e:
         st.error(f"🚨 Terjadi kesalahan sistem: {str(e)}")
-        st.info("💡 Pastikan file Excel berada di dalam folder yang benar (seperti folder 'data') dan formatnya sesuai.")
+        st.info("💡 Pastikan format data Excel sesuai dan tidak ada data korup.")
 
 if __name__ == "__main__":
     main()
