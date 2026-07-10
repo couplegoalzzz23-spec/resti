@@ -318,7 +318,7 @@ def render_wind_page():
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
 def render_home():
-    st.title("✈️ Aviation Climatology Dashboard")
+    st.title("✈️ Aviation Meteorology Dashboard")
     st.markdown("---")
     
     col1, col2 = st.columns([2, 1])
@@ -367,7 +367,7 @@ def main():
     )
     
     st.sidebar.markdown("---")
-    st.sidebar.caption("Aviation Climatology Dashboard © 2026")
+    st.sidebar.caption("Aviation Meteorology Dashboard © 2026")
 
     if menu == "Home":
         render_home()
