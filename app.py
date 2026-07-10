@@ -380,7 +380,7 @@ def render_wind_page():
         st.warning("⚠️ Data angin kosong atau gagal diolah.")
 
 def render_home():
-    st.title("✈️ Aviation Climatology Dashboard")
+    st.title("✈️ Aviation Meteorology Dashboard")
     st.markdown("---")
     
     col1, col2 = st.columns([2, 1])
