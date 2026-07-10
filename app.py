@@ -138,7 +138,7 @@ def generate_auto_interpretation(df, plot_cols, param_name):
 # ==========================================
 # 4. DASHBOARD PAGES & VISUALIZATIONS
 # ==========================================
-def render_generic_page(title, filename, param_key, chart_type='bar', colorscale="Blues", legend_title="Kategori"):
+def render_generic_page(title, filename, param_key, chart_type='bar', colorscale="Rainbow", legend_title="Kategori"):
     st.title(f"{title}")
     st.markdown(f"*{get_aviation_notes(param_key)}*")
     st.markdown("---")
@@ -149,23 +149,23 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
         
         col_chart, col_metric = st.columns([3, 1])
         
-        safe_colorscale = getattr(px.colors.sequential, colorscale, px.colors.sequential.Blues)
+        # PERBAIKAN WARNA: Membuat palet "Mejikuhibiniu" (Pelangi) yang kontras dan dinamis sesuai jumlah data
+        mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(plot_cols)-1) if len(plot_cols)>1 else 1 for i in range(len(plot_cols))])
         
         with col_chart:
             st.markdown("### 📈 Interactive Meteogram")
             if chart_type == 'bar':
                 fig = px.bar(
                     df, x='DATE', y=plot_cols, barmode='group', 
-                    color_discrete_sequence=safe_colorscale,
+                    color_discrete_sequence=mejiku_colors,
                     labels={"variable": legend_title, "value": "Nilai / Frekuensi", "DATE": "Bulan"}
                 )
             else: 
                 fig = go.Figure()
-                safe_qualitative = getattr(px.colors.qualitative, 'Plotly', ['#003366', '#d62728', '#2ca02c', '#ff7f0e'])
                 for idx, col in enumerate(plot_cols):
                     fig.add_trace(go.Scatter(
                         x=df['DATE'], y=df[col], mode='lines+markers', 
-                        name=str(col), line=dict(width=3, color=safe_qualitative[idx % len(safe_qualitative)])
+                        name=str(col), line=dict(width=3, color=mejiku_colors[idx % len(mejiku_colors)])
                     ))
             
             fig.update_layout(
@@ -185,7 +185,7 @@ def render_generic_page(title, filename, param_key, chart_type='bar', colorscale
             df_heat = df.set_index('DATE')[plot_cols].T
             fig_heat = px.imshow(
                 df_heat, text_auto=".1f", aspect="auto", 
-                color_continuous_scale=safe_colorscale,
+                color_continuous_scale="Rainbow",
                 labels={"x": "Bulan", "y": legend_title, "color": "Nilai"}
             )
             fig_heat.update_layout(plot_bgcolor="white", margin=dict(l=0, r=0, t=0, b=0))
@@ -240,7 +240,7 @@ def render_wind_page():
                     r=avg_dir['Frekuensi'],
                     theta=avg_dir['Arah'],
                     marker_color=avg_dir['Frekuensi'],
-                    marker_colorscale='Turbo', 
+                    marker_colorscale='Rainbow', # PERBAIKAN WARNA Mejikuhibiniu
                     name="Arah Angin (Avg)",
                     showlegend=False
                 ),
@@ -248,8 +248,8 @@ def render_wind_page():
             )
 
         if speed_cols:
-            safe_colorscale = getattr(px.colors.sequential, "Turbo", px.colors.sequential.Viridis)
-            colors = px.colors.sample_colorscale(safe_colorscale, [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
+            # PERBAIKAN WARNA: Membuat palet "Mejikuhibiniu" (Pelangi)
+            mejiku_colors = px.colors.sample_colorscale("Rainbow", [i/(len(speed_cols)-1) if len(speed_cols)>1 else 1 for i in range(len(speed_cols))])
             
             for idx, col in enumerate(speed_cols):
                 fig_wind.add_trace(
@@ -257,7 +257,7 @@ def render_wind_page():
                         x=df['DATE'], 
                         y=df[col], 
                         name=f"{col} Kts",
-                        marker_color=colors[idx]
+                        marker_color=mejiku_colors[idx]
                     ),
                     row=1, col=2
                 )
@@ -285,7 +285,7 @@ def render_wind_page():
             if dir_cols:
                 st.markdown("**Distribusi Arah Angin**")
                 df_heat_dir = df.set_index('DATE')[dir_cols].T
-                fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
+                fig_hd = px.imshow(df_heat_dir, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Arah", "color": "Frekuensi"})
                 fig_hd.update_layout(margin=dict(l=0, r=0, t=0, b=0))
                 # PERBAIKAN: use_container_width diganti width="stretch"
@@ -295,7 +295,7 @@ def render_wind_page():
             if speed_cols:
                 st.markdown("**Distribusi Kecepatan Angin**")
                 df_heat_speed = df.set_index('DATE')[speed_cols].T
-                fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Turbo",
+                fig_hs = px.imshow(df_heat_speed, text_auto=".1f", aspect="auto", color_continuous_scale="Rainbow",
                                    labels={"x": "Bulan", "y": "Kecepatan (Kts)", "color": "Frekuensi"})
                 fig_hs.update_layout(margin=dict(l=0, r=0, t=0, b=0))
                 # PERBAIKAN: use_container_width diganti width="stretch"
@@ -372,15 +372,15 @@ def main():
     if menu == "Home":
         render_home()
     elif menu == "Temperature Frequency":
-        render_generic_page("🌡️ Temperature Frequency", "rekap_temperature_2021_2025.xlsx", "Temperature Freq", 'bar', "Reds", "Kategori Suhu (°C)")
+        render_generic_page("🌡️ Temperature Frequency", "rekap_temperature_2021_2025.xlsx", "Temperature Freq", 'bar', "Rainbow", "Kategori Suhu (°C)")
     elif menu == "Temperature Mean Max Min":
-        render_generic_page("📈 Temperature Mean Max Min", "rekap_temp_max_min_2021_2025.xlsx", "Temperature Mean", 'line', "Reds", "Parameter Suhu")
+        render_generic_page("📈 Temperature Mean Max Min", "rekap_temp_max_min_2021_2025.xlsx", "Temperature Mean", 'line', "Rainbow", "Parameter Suhu")
     elif menu == "Relative Humidity":
-        render_generic_page("💧 Relative Humidity", "rekap_rh_max_min_2021_2025.xlsx", "Relative Humidity", 'line', "Teal", "Waktu Pengamatan (UTC)")
+        render_generic_page("💧 Relative Humidity", "rekap_rh_max_min_2021_2025.xlsx", "Relative Humidity", 'line', "Rainbow", "Waktu Pengamatan (UTC)")
     elif menu == "Visibility":
-        render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Greens", "Jarak Pandang (Meter)")
+        render_generic_page("🌫️ Visibility", "rekap_visibility_2021_2025.xlsx", "Visibility", 'bar', "Rainbow", "Jarak Pandang (Meter)")
     elif menu == "Cloud Base (HS)":
-        render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Blues", "Tinggi Awan (Feet)")
+        render_generic_page("☁️ Cloud Base (Ceiling)", "rekap_hs_2021_2025.xlsx", "Cloud Base", 'bar', "Rainbow", "Tinggi Awan (Feet)")
     elif menu == "Wind":
         render_wind_page()
 
